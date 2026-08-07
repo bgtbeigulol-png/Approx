@@ -1,4 +1,5 @@
 import { Spring, clamp } from './anim.js';
+import { cleanText, finiteInt } from './value-utils.js';
 
 export const QUESTION_TYPES = ['single', 'multi', 'text'];
 export const MAX_QUESTIONS = 5;
@@ -635,15 +636,6 @@ function cloneAnswer(value, type) {
   return type === 'multi' ? [...(Array.isArray(value) ? value : [])] : value ?? (type === 'text' ? '' : null);
 }
 
-function cleanText(value, max) {
-  return String(value ?? '').replace(/\r\n?/g, '\n').replace(/\u0000/g, '').trim().slice(0, max);
-}
-
 function cleanId(value) {
   return String(value ?? '').trim().replace(/[^a-zA-Z0-9_.:-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120);
-}
-
-function finiteInt(value, fallback) {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.trunc(n) : fallback;
 }

@@ -1,4 +1,8 @@
 import { Spring, clamp } from './anim.js';
+import {
+  normalizeAutoCompactMode, normalizeAutoCompactPercent, normalizeAutoCompactTokens,
+} from './compact-settings.js';
+import { createCompactState } from './compact-state.js';
 import { createDirectoryPickerState, formatWorkingDirectory } from './directories.js';
 import { createGitState } from './git.js';
 import { createPlanState } from './plan.js';
@@ -44,23 +48,10 @@ export function createAppState({ noSplash = false, backend = null, preferences =
     ctxUse: new Spring(0.06, { stiff: 6, damp: 1 }),
     ctxTokens: 0,
     contextWindow: 0,
-    autoCompactMode: pref.autoCompactMode === 'tokens' ? 'tokens' : 'percent',
-    autoCompactPercent: validCompactPercent(pref.autoCompactPercent),
-    autoCompactTokens: validCompactTokens(pref.autoCompactTokens),
-    compact: {
-      seq: 0,
-      active: false,
-      phase: 'idle',
-      reason: 'manual',
-      startedAt: 0,
-      finishedAt: 0,
-      tokensBefore: null,
-      tokensAfter: null,
-      error: '',
-      enter: new Spring(0, { stiff: 20, damp: 0.82 }),
-      progress: new Spring(0, { stiff: 12, damp: 0.9 }),
-      pulse: new Spring(0, { stiff: 18, damp: 0.72 }),
-    },
+    autoCompactMode: normalizeAutoCompactMode(pref.autoCompactMode),
+    autoCompactPercent: normalizeAutoCompactPercent(pref.autoCompactPercent),
+    autoCompactTokens: normalizeAutoCompactTokens(pref.autoCompactTokens),
+    compact: createCompactState(),
     tps: new Array(18).fill(0),
     tpsNow: 0,
     focusAnim: new Spring(1, { stiff: 14, damp: 0.8 }),
@@ -131,17 +122,4 @@ export function createAppState({ noSplash = false, backend = null, preferences =
     plan: createPlanState(),
     questionnaire: createQuestionnaireState(),
   };
-}
-
-function validCompactPercent(value) {
-  const percent = Number(value);
-  return Number.isInteger(percent) && percent >= 10 && percent <= 100 && percent % 10 === 0
-    ? percent : 80;
-}
-
-function validCompactTokens(value) {
-  const tokens = Number(value);
-  const ratio = tokens / 32768;
-  return Number.isInteger(tokens) && tokens >= 32768 && tokens <= 2097152
-    && Number.isInteger(Math.log2(ratio)) ? tokens : 32768;
 }

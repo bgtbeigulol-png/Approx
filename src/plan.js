@@ -1,4 +1,5 @@
 import { Spring, clamp } from './anim.js';
+import { cleanText, finiteInt } from './value-utils.js';
 
 export const PLAN_MODES = ['go', 'plan'];
 export const PLAN_APPROVALS = ['none', 'draft', 'pending', 'approved', 'rejected'];
@@ -812,16 +813,7 @@ function formatTodos(todos) {
   return visible.join('\n');
 }
 
-function cleanText(value, max = MAX_TEXT) {
-  return String(value ?? '').replace(/\r\n?/g, '\n').replace(/\u0000/g, '').trim().slice(0, max);
-}
-
 function clip(value, max) {
   const text = cleanText(value, max + 1);
   return text.length > max ? `${text.slice(0, Math.max(0, max - 1))}…` : text;
-}
-
-function finiteInt(value, fallback) {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.trunc(n) : fallback;
 }

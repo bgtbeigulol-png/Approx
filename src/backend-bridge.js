@@ -1,6 +1,8 @@
 import { Spring, clamp } from './anim.js';
+import { createCompactState } from './compact-state.js';
 import { invalidateLayoutTree } from './ui/transcript.js';
 import { formatWorkingDirectory } from './directories.js';
+import { toolTreeNodes } from './message-tree.js';
 
 /** Translate backend events into the app's live transcript state. */
 export const backendBridgeMethods = {
@@ -144,43 +146,13 @@ export const backendBridgeMethods = {
   },
 
   loadHistory(messages) {
-    this.liveAssistant = null;
-    this._pendingLiveDelta = '';
-    this.liveTools.clear();
-    this._activeTurn = null;
-    this._detachedMutations = [];
-    this.st.messageQueue = [];
-    this.st.queueGhosts = [];
-    this.st.queueHits = [];
-    this.st.queueAnim.set(0, true);
-    this.st.msgs = [];
-    this.st.toolFocus = null;
+    this.resetTranscriptView();
     this.st.atBottom = false;
     for (const source of messages ?? []) {
       const msg = { enter: 1, ...source };
-      if (msg.role === 'tool') {
-        msg.expanded = !!msg.expanded;
-        msg.expandAnim = new Spring(msg.expanded ? 1 : 0, { stiff: 18, damp: 0.86 });
-      }
-      if (msg.role === 'toolgroup') {
-        msg.expanded = !!msg.expanded;
-        msg.expandAnim = new Spring(msg.expanded ? 1 : 0, { stiff: 18, damp: 0.86 });
-        for (const tool of msg.tools ?? []) {
-          tool.expanded = !!tool.expanded;
-          tool.expandAnim = new Spring(tool.expanded ? 1 : 0, { stiff: 18, damp: 0.86 });
-        }
-      }
-      if (msg.role === 'workgroup') {
-        msg.expanded = !!msg.expanded;
-        msg.expandAnim = new Spring(msg.expanded ? 1 : 0, { stiff: 18, damp: 0.86 });
-        for (const group of msg.tools ?? []) {
-          group.expanded = !!group.expanded;
-          group.expandAnim = new Spring(group.expanded ? 1 : 0, { stiff: 18, damp: 0.86 });
-          for (const tool of group.tools ?? []) {
-            tool.expanded = !!tool.expanded;
-            tool.expandAnim = new Spring(tool.expanded ? 1 : 0, { stiff: 18, damp: 0.86 });
-          }
-        }
+      for (const node of toolTreeNodes(msg)) {
+        node.expanded = !!node.expanded;
+        node.expandAnim = new Spring(node.expanded ? 1 : 0, { stiff: 18, damp: 0.86 });
       }
       if (msg.role === 'system' && msg.subtype === 'changeset') {
         msg.expanded = !!msg.expanded;
@@ -393,19 +365,6 @@ export const backendBridgeMethods = {
 
 function ensureCompactState(st) {
   if (st.compact) return st.compact;
-  st.compact = {
-    seq: 0,
-    active: false,
-    phase: 'idle',
-    reason: 'manual',
-    startedAt: 0,
-    finishedAt: 0,
-    tokensBefore: null,
-    tokensAfter: null,
-    error: '',
-    enter: new Spring(0, { stiff: 20, damp: 0.82 }),
-    progress: new Spring(0, { stiff: 12, damp: 0.9 }),
-    pulse: new Spring(0, { stiff: 18, damp: 0.72 }),
-  };
+  st.compact = createCompactState();
   return st.compact;
 }

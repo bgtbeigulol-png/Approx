@@ -1,21 +1,15 @@
 import { T } from './theme.js';
 import {
+  normalizeAutoCompactMode, normalizeAutoCompactPercent, normalizeAutoCompactTokens,
+} from './compact-settings.js';
+import {
   ACCENTS as ACCENT_DEFS,
-  AUTO_COMPACT_PERCENT_OPTIONS,
-  AUTO_COMPACT_TOKEN_OPTIONS,
   formatCompactTokens,
 } from './settings.js';
 import { savePreferences } from './persistence.js';
 import { invalidateLayoutTree } from './ui/transcript.js';
 
 const ACCENTS = ACCENT_DEFS.map((a) => a.color);
-
-function closestOption(value, options, fallback) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return options.reduce((best, option) =>
-    Math.abs(option - n) < Math.abs(best - n) ? option : best, options[0]);
-}
 
 /** Runtime option setters shared by settings, palette, slash commands, and harness. */
 export const runtimeSettingMethods = {
@@ -44,7 +38,7 @@ export const runtimeSettingMethods = {
   },
 
   setAutoCompactMode(mode) {
-    this.st.autoCompactMode = mode === 'tokens' ? 'tokens' : 'percent';
+    this.st.autoCompactMode = normalizeAutoCompactMode(mode);
     this.syncAutoCompactThreshold(true);
     this.persistPreferences();
     this.s.invalidate();
@@ -52,7 +46,7 @@ export const runtimeSettingMethods = {
   },
 
   setAutoCompactPercent(value) {
-    this.st.autoCompactPercent = closestOption(value, AUTO_COMPACT_PERCENT_OPTIONS, 80);
+    this.st.autoCompactPercent = normalizeAutoCompactPercent(value);
     this.syncAutoCompactThreshold(true);
     this.persistPreferences();
     this.s.invalidate();
@@ -60,7 +54,7 @@ export const runtimeSettingMethods = {
   },
 
   setAutoCompactTokens(value) {
-    this.st.autoCompactTokens = closestOption(value, AUTO_COMPACT_TOKEN_OPTIONS, 32768);
+    this.st.autoCompactTokens = normalizeAutoCompactTokens(value);
     this.syncAutoCompactThreshold(true);
     this.persistPreferences();
     this.s.invalidate();
@@ -72,9 +66,9 @@ export const runtimeSettingMethods = {
     if (!apply) return null;
     try {
       return apply.call(this.backend, {
-        mode: this.st.autoCompactMode === 'tokens' ? 'tokens' : 'percent',
-        percent: closestOption(this.st.autoCompactPercent, AUTO_COMPACT_PERCENT_OPTIONS, 80),
-        tokens: closestOption(this.st.autoCompactTokens, AUTO_COMPACT_TOKEN_OPTIONS, 32768),
+        mode: normalizeAutoCompactMode(this.st.autoCompactMode),
+        percent: normalizeAutoCompactPercent(this.st.autoCompactPercent),
+        tokens: normalizeAutoCompactTokens(this.st.autoCompactTokens),
       });
     } catch (error) {
       if (reportErrors) this.toast(String(error?.message ?? error), 'warn');

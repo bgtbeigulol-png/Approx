@@ -28,7 +28,9 @@ import { createApproxHostTools } from '../src/pi-host-tools.js';
 import { loadPreferences, savePreferences } from '../src/persistence.js';
 import { Harness } from '../src/harness.js';
 import { App } from '../src/app.js';
+import { createAppState } from '../src/app-state.js';
 import { PiBackend } from '../src/backends/pi.js';
+import { toolMessages } from '../src/message-tree.js';
 import { T, paper, drawPaperGrain } from '../src/theme.js';
 import { EventEmitter } from 'node:events';
 import { spawnSync } from 'node:child_process';
@@ -1186,6 +1188,13 @@ ok('app drive clean', !appThrew);
     && c.st.autoCompactMode === 'tokens');
   ok('applySetting selects token threshold', applySetting(c, 'autoCompactThreshold', '64K') === '64K'
     && c.st.autoCompactTokens === 65536);
+  const startupTokens = createAppState({ preferences: { autoCompactTokens: 50000 } }).autoCompactTokens;
+  c.setAutoCompactTokens(50000);
+  const compactBackend = new PiBackend();
+  compactBackend.setAutoCompactThreshold({ mode: 'tokens', tokens: 50000 });
+  ok('compact token normalization is shared by startup, runtime, and backend',
+    startupTokens === 65536 && c.st.autoCompactTokens === 65536
+    && compactBackend.autoCompactThreshold.tokens === 65536);
   applySetting(c, 'autoCompactMode', 'percent');
   ok('applySetting selects percent threshold', applySetting(c, 'autoCompactThreshold', '70%') === '70%'
     && c.st.autoCompactPercent === 70);
@@ -1605,6 +1614,24 @@ ok('app drive clean', !appThrew);
   for (const id of c.timers) clearTimeout(id);
 }
 
+// ---- history replacement clears state owned by the previous conversation ----
+{
+  const c = new App({ noSplash: true });
+  c.s = new Screen(new FakeOut(88, 28));
+  c.st.redo = { used: false };
+  c.st.textSelection = { active: true };
+  c.st.jump = true;
+  c.st.railTicks = [{ index: 99 }];
+  c.st.railHover = 3;
+  c._tokenEvents = [{ at: 1, tokens: 2 }];
+  c.loadHistory([{ role: 'user', text: 'replacement history' }]);
+  ok('history replacement clears stale redo and transcript interaction state',
+    c.st.redo === null && c.st.textSelection === null && !c.st.jump
+    && c.st.railTicks.length === 0 && c.st.railHover === -1 && c._tokenEvents.length === 0);
+  c.clock.stop();
+  for (const id of c.timers) clearTimeout(id);
+}
+
 // ---- three adjacent tools become one named, two-level group ----
 {
   const c = new App({ noSplash: true });
@@ -1614,6 +1641,13 @@ ok('app drive clean', !appThrew);
     { id: 'g-2', name: 'read', title: 'Read app.js' },
     { id: 'g-3', name: 'grep', title: 'Search tool routing' },
   ];
+  const nestedTools = [...toolMessages({
+    role: 'workgroup', tools: [{
+      role: 'toolgroup', tools: [{ role: 'tool', callId: 'a' }, { role: 'tool', callId: 'b' }],
+    }],
+  })];
+  ok('shared tool-tree walk returns nested leaf tools in display order',
+    nestedTools.map((tool) => tool.callId).join('|') === 'a|b');
   c.onBackendEvent({ type: 'tool_start', ...starts[0] });
   c.onBackendEvent({ type: 'tool_start', ...starts[1] });
   ok('two adjacent tools stay independent', c.st.msgs.length === 2 && c.st.msgs.every((msg) => msg.role === 'tool'));

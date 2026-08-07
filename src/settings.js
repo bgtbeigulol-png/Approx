@@ -4,6 +4,13 @@
 // driver change the compact threshold without knowing a settings page exists.
 
 import { C } from './theme.js';
+import {
+  AUTO_COMPACT_PERCENT_OPTIONS, AUTO_COMPACT_TOKEN_OPTIONS,
+} from './compact-settings.js';
+
+export {
+  AUTO_COMPACT_PERCENT_OPTIONS, AUTO_COMPACT_TOKEN_OPTIONS,
+} from './compact-settings.js';
 
 export const ACCENTS = [
   { name: 'vermilion', color: C.vermilion },
@@ -12,9 +19,6 @@ export const ACCENTS = [
   { name: 'plum', color: C.plum },
   { name: 'ember', color: C.ember },
 ];
-
-export const AUTO_COMPACT_PERCENT_OPTIONS = Array.from({ length: 10 }, (_, i) => (i + 1) * 10);
-export const AUTO_COMPACT_TOKEN_OPTIONS = Array.from({ length: 7 }, (_, i) => 32768 * (2 ** i));
 
 export function formatCompactTokens(tokens) {
   const value = Number(tokens) || 0;

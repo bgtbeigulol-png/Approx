@@ -13,6 +13,10 @@ import {
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve } from 'node:path';
+import {
+  normalizeAutoCompactMode, normalizeAutoCompactPercent, normalizeAutoCompactTokens,
+} from '../compact-settings.js';
+import { samePath } from '../path-utils.js';
 import { createApproxHostTools } from '../pi-host-tools.js';
 import {
   applyPlanOperation, buildPlanTurnInjection, createPlanState, hydratePlanState, serializePlanState,
@@ -549,7 +553,7 @@ export class PiBackend {
         modified: item.modified.toISOString(),
         modifiedLabel: relativeDate(item.modified),
         messageCount: item.messageCount,
-        current: !!current && resolve(item.path).toLowerCase() === resolve(current).toLowerCase(),
+        current: !!current && samePath(item.path, current),
       }));
   }
 
@@ -671,9 +675,9 @@ export class PiBackend {
 
   setAutoCompactThreshold({ mode = 'percent', percent = 80, tokens = 32768 } = {}) {
     this.autoCompactThreshold = {
-      mode: mode === 'tokens' ? 'tokens' : 'percent',
-      percent: Math.max(10, Math.min(100, Math.round(Number(percent) / 10) * 10 || 80)),
-      tokens: Math.max(32768, Math.round(Number(tokens)) || 32768),
+      mode: normalizeAutoCompactMode(mode),
+      percent: normalizeAutoCompactPercent(percent),
+      tokens: normalizeAutoCompactTokens(tokens),
     };
     return this.applyAutoCompactThreshold();
   }
@@ -996,12 +1000,6 @@ function shouldAutoPlan(text, plan) {
     /(?:大型|复杂|完整|整体|架构|重构|迁移|方案|多步骤|全流程)/,
   ];
   return value.length >= 280 && signals.some((pattern) => pattern.test(value));
-}
-
-function samePath(left, right) {
-  const a = resolve(String(left));
-  const b = resolve(String(right));
-  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
 function mutationPath(cwd, args) {

@@ -3,6 +3,7 @@ import { RESET, sgr } from './ansi.js';
 import { totalChars } from './app-geometry.js';
 import { Screen } from './screen.js';
 import { buildFileChanges, summarizeFileChanges } from './file-changes.js';
+import { toolMessages } from './message-tree.js';
 import { invalidateLayoutTree } from './ui/transcript.js';
 
 /** Transcript mutation, WORK archival, streaming, snapshots, and resets. */
@@ -115,9 +116,9 @@ export const transcriptMethods = {
           const message = entry.msg;
           if (message.role === 'workgroup') {
             notes.push(...(message.notes ?? []));
-            flattenArchiveTools(message, tools);
+            tools.push(...toolMessages(message));
           } else if (isArchivableTool(message)) {
-            flattenArchiveTools(message, tools);
+            tools.push(...toolMessages(message));
           } else if (message.role === 'approx' || message.role === 'assistant') {
             notes.push(message);
           }
@@ -460,34 +461,11 @@ function findFinalApprox(segment) {
   return -1;
 }
 
-function flattenArchiveTools(message, output) {
-  if (message?.role === 'tool') {
-    output.push(message);
-    return;
-  }
-  if (message?.role === 'toolgroup') {
-    for (const tool of message.tools ?? []) output.push(tool);
-    return;
-  }
-  if (message?.role === 'workgroup') {
-    for (const group of message.tools ?? []) {
-      for (const tool of group.tools ?? []) output.push(tool);
-    }
-  }
-}
-
 function collectLatestTurnMutations(messages) {
   const userIndex = messages.findLastIndex((message) => message?.role === 'user');
-  const mutations = [];
-  const takeTool = (tool) => { if (tool?.mutation) mutations.push(tool.mutation); };
-  for (const message of messages.slice(userIndex + 1)) {
-    if (message.role === 'tool') takeTool(message);
-    if (message.role === 'toolgroup') for (const tool of message.tools ?? []) takeTool(tool);
-    if (message.role === 'workgroup') {
-      for (const group of message.tools ?? []) for (const tool of group.tools ?? []) takeTool(tool);
-    }
-  }
-  return mutations;
+  return [...toolMessages(messages.slice(userIndex + 1))]
+    .map((tool) => tool.mutation)
+    .filter(Boolean);
 }
 
 function findToolGroup(container, tool) {

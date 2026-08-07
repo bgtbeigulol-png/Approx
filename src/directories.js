@@ -4,7 +4,10 @@ import { readdir, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { Spring, clamp } from './anim.js';
+import { samePath as sameDirectory } from './path-utils.js';
 import { DIRECTORY_ROWS, directoryHit, directoryLayout } from './ui/directories.js';
+
+export { sameDirectory };
 
 const DIRECTORY_SPRING = { stiff: 18, damp: 0.88 };
 const CURSOR_SPRING = { stiff: 22, damp: 0.9 };
@@ -14,14 +17,6 @@ export function formatWorkingDirectory(path) {
   const value = String(path ?? '').replace(/\\/g, '/');
   const parts = value.split('/').filter(Boolean);
   return parts.length <= 2 ? value : `\u2026/${parts.slice(-2).join('/')}`;
-}
-
-export function sameDirectory(a, b) {
-  const left = resolve(String(a ?? ''));
-  const right = resolve(String(b ?? ''));
-  return process.platform === 'win32'
-    ? left.toLowerCase() === right.toLowerCase()
-    : left === right;
 }
 
 /** Resolve aliases and relative paths, then prove that the result is a directory. */

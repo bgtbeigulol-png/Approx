@@ -2,6 +2,7 @@ import { Spring, clamp } from './anim.js';
 import { copyToClipboard } from './ansi.js';
 import { selectionRanges } from './app-geometry.js';
 import { setComposerInput } from './composer-state.js';
+import { toolMessages } from './message-tree.js';
 import { T, mix } from './theme.js';
 import { composerHeight } from './ui/composer.js';
 import { HEADER_H } from './ui/header.js';
@@ -534,19 +535,7 @@ function findFocusedTool(messages, focus) {
 }
 
 function collectMutations(messages) {
-  const mutations = [];
-  for (const message of messages) {
-    if (message.role === 'tool' && message.mutation) mutations.push(message.mutation);
-    if (message.role === 'toolgroup') {
-      for (const tool of message.tools ?? []) if (tool.mutation) mutations.push(tool.mutation);
-    }
-    if (message.role === 'workgroup') {
-      for (const group of message.tools ?? []) {
-        for (const tool of group.tools ?? []) if (tool.mutation) mutations.push(tool.mutation);
-      }
-    }
-  }
-  return mutations;
+  return [...toolMessages(messages)].map((tool) => tool.mutation).filter(Boolean);
 }
 
 function collectMutationCallIds(messages) {
@@ -555,12 +544,6 @@ function collectMutationCallIds(messages) {
     const name = String(tool?.name ?? '').toLowerCase();
     if ((name === 'write' || name === 'edit') && tool.callId) ids.push(String(tool.callId));
   };
-  for (const message of messages) {
-    if (message.role === 'tool') take(message);
-    if (message.role === 'toolgroup') for (const tool of message.tools ?? []) take(tool);
-    if (message.role === 'workgroup') {
-      for (const group of message.tools ?? []) for (const tool of group.tools ?? []) take(tool);
-    }
-  }
+  for (const tool of toolMessages(messages)) take(tool);
   return ids;
 }
