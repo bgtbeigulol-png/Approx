@@ -1,0 +1,23 @@
+node_modules/
+
+# Local credentials and agent configuration
+.claude/
+.codex/
+.pi/
+.env
+.env.*
+!.env.example
+
+# Logs, coverage, and generated packages
+*.log
+npm-debug.log*
+coverage/
+dist/
+*.tgz
+*.sha256
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp

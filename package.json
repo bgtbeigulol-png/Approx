@@ -1,0 +1,53 @@
+{
+  "name": "@bgtbeigulol-png/approx",
+  "version": "0.1.0-beta.1",
+  "type": "module",
+  "description": "Approx — a brutalist coding-agent TUI on condensed-milk paper",
+  "bin": {
+    "approx": "./bin/approx.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "README_CN.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "start": "node bin/approx.js",
+    "continue": "node bin/approx.js --continue",
+    "auth": "pi",
+    "scripted": "node bin/approx.js --scripted",
+    "smoke": "node scripts/smoke.js",
+    "test": "npm run smoke && node scripts/pi-plan-revision.test.js"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.83.0",
+    "typebox": "^1.3.7"
+  },
+  "keywords": [
+    "coding-agent",
+    "pi",
+    "terminal",
+    "tui",
+    "ai"
+  ],
+  "author": "bgtbeigulol-png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bgtbeigulol-png/Approx.git"
+  },
+  "homepage": "https://github.com/bgtbeigulol-png/Approx#readme",
+  "bugs": {
+    "url": "https://github.com/bgtbeigulol-png/Approx/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "beta"
+  }
+}
