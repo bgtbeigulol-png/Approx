@@ -2,33 +2,15 @@
 
 [简体中文](README_CN.md) | English
 
-Approx is a Windows-first coding-agent TUI powered by
-[Pi](https://github.com/earendil-works/pi). It combines a focused terminal
-workspace with persistent conversations, model controls, structured questions,
-and a built-in Plan Mode for work that benefits from design before execution.
+Approx is a focused coding-agent workspace for the terminal, powered by
+[Pi](https://github.com/earendil-works/pi). It gives you a calm place to chat,
+plan work, review file changes, and handle the Git work around a project.
 
-This is an early public beta. Windows Terminal and PowerShell 7 are the verified
-environment for this release.
-
-## Requirements
-
-- Windows 10 or Windows 11
-- Windows Terminal or another terminal with 24-bit color and mouse support
-- PowerShell 7 or newer
-- Node.js 22.19 or newer
-- An account or API key for a model provider supported by Pi
-
-Check the installed versions:
-
-```powershell
-$ErrorActionPreference = 'Stop'
-node --version
-npm --version
-```
+This is an early beta, currently verified on Windows Terminal with PowerShell 7.
 
 ## Install
 
-Install the public beta from npm:
+Requirements: Windows 10/11 and Node.js 22.19 or newer.
 
 ```powershell
 $ErrorActionPreference = 'Stop'
@@ -36,7 +18,7 @@ npm install --global @bgtbeigulol-png/approx@beta
 approx
 ```
 
-To install from source instead:
+Or run from source:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
@@ -48,69 +30,64 @@ npm start
 
 ## First Run
 
-Running `approx` starts the live Pi-backed agent. If Pi has no available model,
-Approx opens first-run setup and guides you through provider configuration.
-Existing Pi credentials and custom providers are reused automatically.
+Run `approx` in the project directory you want to work on. Approx uses Pi's
+existing provider and model setup. When no model is available, Approx opens its
+own setup flow so you can connect a provider without leaving the app.
 
-Credentials are owned by Pi and stored in its user configuration directory.
-Approx does not copy API keys into its preferences, conversations, or project
-files.
+Your credentials stay in Pi's user configuration. Approx does not put API keys
+in project files, preferences, or conversation text.
 
-You can also open Pi's provider login helper from a source checkout:
-
-```powershell
-$ErrorActionPreference = 'Stop'
-npm run auth
-```
-
-Enter `/login`, select a provider, complete authentication, then exit and run
-`npm start` again.
-
-## Usage
+## Everyday Use
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-approx                 # start a live Pi session
-approx --continue      # continue the latest session for this directory
+approx --continue      # continue the latest conversation
 approx --no-splash     # skip the startup animation
-approx --scripted      # run the offline interface demo
-approx --help          # show CLI options
+approx --scripted      # run the offline demo
+approx --help
 ```
-
-Approx uses the directory from which it is launched as the agent workspace.
-
-### Main Keys
 
 | Key | Action |
 | --- | --- |
 | `Enter` | Send |
-| `Shift+Enter` or `Ctrl+J` | Insert a line break |
-| `Shift+Tab` | Switch between Go and Plan |
-| `Ctrl+P` | Open the command palette |
-| `Ctrl+O` | Open settings |
-| `Ctrl+G` | Open quick jump |
-| `Ctrl+S` | Open saved conversations |
-| `Ctrl+L` | Start with a clean context |
-| `Esc` | Stop the active response or close an overlay |
+| `Shift+Enter` | New line |
+| `Shift+Tab` | Switch Go / Plan |
+| `Ctrl+P` | Command palette |
+| `Ctrl+K` | Git workbench |
+| `Ctrl+O` | Settings |
+| `Ctrl+G` | Quick jump |
+| `Ctrl+S` | Saved conversations |
+| `Ctrl+L` | Clear context |
+| `Esc` | Stop or close |
 | `Ctrl+C` | Exit |
 
-Type `/help` inside Approx for the complete command and key reference.
+Type `/help` for the complete list. Type `/git` to open the Git workbench.
 
 ## Plan Mode
 
-Go Mode lets the agent work immediately. Plan Mode lets it inspect the task,
-collect structured answers, and present a visible plan before changing files.
-Approve the plan with `Y` or `Enter`, or request a revision with `N`.
+Go Mode starts work immediately. Plan Mode lets Approx ask a few focused
+questions and show a plan before the agent changes files. Approve with `Y` or
+`Enter`; press `N` to request a revision.
 
-The Plan panel remains attached to its conversation and tracks execution todo
-status after approval.
+## Git Workbench
+
+Open it with `Ctrl+K` or `/git`. It shows the current branch, recent commits,
+working-tree changes, staged changes, and the selected diff. From the same view
+you can stage, unstage, refresh, and create a commit.
+
+File edits made during a turn are grouped into a compact change summary in the
+conversation. Expand it when you need to inspect the details.
 
 ## Troubleshooting
 
+**No model is available**
+
+Finish the setup flow shown by Approx. Existing Pi credentials and custom model
+settings are reused automatically.
+
 **`approx` is not recognized**
 
-Restart the terminal after global installation and confirm npm's global binary
-directory is on `PATH`:
+Restart the terminal after global installation and check the npm global path:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
@@ -118,28 +95,12 @@ npm prefix --global
 Get-Command approx
 ```
 
-**No model is available**
+**The screen looks wrong**
 
-Complete the first-run setup or run the Pi login helper from a source checkout.
-For an existing Pi installation, verify that Pi itself lists a model before
-starting Approx.
-
-**The terminal reports that stdout is not a TTY**
-
-Run Approx directly in Windows Terminal instead of redirecting its output to a
-file or pipeline.
-
-**Rendering looks incorrect**
-
-Use an up-to-date terminal with UTF-8, Unicode box drawing, 24-bit color, and
-mouse reporting enabled. Windows Terminal is the supported baseline.
-
-## Privacy
-
-Model requests, authentication, sessions, tools, and provider configuration are
-handled by Pi. Review the terms and data policies of the provider you select.
-Do not commit `.pi`, `.claude`, `.env`, log, or credential files to a project.
+Use Windows Terminal with UTF-8, Unicode box characters, 24-bit color, and
+mouse support.
 
 ## License
 
 [MIT](LICENSE)
+
