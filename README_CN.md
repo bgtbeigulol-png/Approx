@@ -2,6 +2,14 @@
 
 简体中文 | [English](README.md)
 
+<p align="center">
+  <img src="assets/approx-icon.png" alt="Approx 图标" width="96">
+</p>
+
+<p align="center">
+  <img src="assets/approx-banner.jpg" alt="Approx 项目横幅">
+</p>
+
 Approx 是一个运行在终端里的编程智能体工作区，由
 [Pi](https://github.com/earendil-works/pi) 驱动。你可以在这里聊天、制定计划、
 查看文件变更，并处理项目的 Git 操作。
@@ -97,4 +105,3 @@ Get-Command approx
 ## 许可证
 
 [MIT](LICENSE)
-

@@ -2,6 +2,14 @@
 
 [简体中文](README_CN.md) | English
 
+<p align="center">
+  <img src="assets/approx-icon.png" alt="Approx icon" width="96">
+</p>
+
+<p align="center">
+  <img src="assets/approx-banner.jpg" alt="Approx banner">
+</p>
+
 Approx is a focused coding-agent workspace for the terminal, powered by
 [Pi](https://github.com/earendil-works/pi). It gives you a calm place to chat,
 plan work, review file changes, and handle the Git work around a project.
@@ -103,4 +111,3 @@ mouse support.
 ## License
 
 [MIT](LICENSE)
-
