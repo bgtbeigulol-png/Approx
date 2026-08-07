@@ -45,6 +45,7 @@ export class PiBackend {
     this.planState = createPlanState();
     this.pendingQuestions = new Map();
     this.questionSeq = 0;
+    this.setupPromise = null;
   }
 
   subscribe(listener) {
@@ -130,8 +131,9 @@ export class PiBackend {
       this.emit({
         type: 'status',
         kind: 'warn',
-        text: 'Approx needs a model login · run the configured provider login',
+        text: 'Approx found no Pi model · opening the connection setup',
       });
+      this.emit({ type: 'setup_required', text: 'No Pi model is configured. Approx will guide setup now.' });
     }
     this.emitContext();
     return session;
@@ -243,7 +245,7 @@ export class PiBackend {
     };
   }
 
-  requestQuestions(toolCallId, questions, signal) {
+  requestQuestions(toolCallId, questions, signal, meta = {}) {
     const requestId = `questions-${++this.questionSeq}-${String(toolCallId || 'tool')}`;
     return new Promise((resolveQuestion) => {
       const finish = (result) => {
@@ -259,12 +261,96 @@ export class PiBackend {
         type: 'questionnaire',
         request: {
           id: requestId,
-          title: 'A FEW SHARP QUESTIONS',
-          intro: 'Answer together; Approx will fold the result back into the active turn.',
+          title: String(meta.title || 'A FEW SHARP QUESTIONS'),
+          intro: String(meta.intro || 'Answer together; Approx will fold the result back into the active turn.'),
           questions,
         },
       });
     });
+  }
+
+  async startSetup() {
+    if (this.setupPromise) return this.setupPromise;
+    this.setupPromise = this.runSetup().finally(() => { this.setupPromise = null; });
+    return this.setupPromise;
+  }
+
+  async runSetup() {
+    const providers = this.modelRuntime.getProviders()
+      .map((provider) => ({
+        id: String(provider.id),
+        name: String(provider.name || provider.id),
+        auth: Object.keys(provider.auth || {}),
+      }))
+      .filter((provider) => provider.auth.length);
+    if (!providers.length) {
+      this.emit({ type: 'status', kind: 'warn', text: 'Pi has no configurable providers.' });
+      return false;
+    }
+    const providerResult = await this.requestQuestions('setup-provider', [{
+      id: 'provider', type: 'single', required: true,
+      prompt: 'Connect a model provider',
+      description: 'Approx handles the setup; Pi keeps the provider and credentials.',
+      options: providers.map((provider) => ({ value: provider.id, label: provider.name })),
+    }], undefined, { title: 'CONNECT A MODEL', intro: 'Choose a provider to connect through Pi.' });
+    if (providerResult.cancelled) {
+      this.emit({ type: 'status', kind: 'info', text: 'Pi setup cancelled.' });
+      return false;
+    }
+    const provider = providers.find((item) => item.id === providerResult.values.provider);
+    if (!provider) return false;
+    let authType = provider.auth.includes('apiKey') ? 'api_key' : 'oauth';
+    if (provider.auth.includes('apiKey') && provider.auth.includes('oauth')) {
+      const authResult = await this.requestQuestions('setup-auth-type', [{
+        id: 'authType', type: 'single', required: true,
+        prompt: `Choose how to connect ${provider.name}`,
+        options: [
+          { value: 'api_key', label: 'API key' },
+          { value: 'oauth', label: 'Browser / subscription login' },
+        ],
+      }], undefined, { title: 'CHOOSE SIGN-IN', intro: 'Approx will keep the visual flow; Pi handles the credential exchange.' });
+      if (authResult.cancelled) return false;
+      authType = authResult.values.authType === 'oauth' ? 'oauth' : 'api_key';
+    }
+    const interaction = {
+      prompt: async (prompt) => {
+        const type = prompt.type === 'secret' ? 'secret' : prompt.type === 'select' ? 'single' : 'text';
+        const question = {
+          id: `setup-${this.questionSeq + 1}`,
+          type,
+          prompt: String(prompt.message || 'Enter connection details'),
+          description: 'Pi will store credentials securely after this step.',
+          placeholder: prompt.placeholder,
+          required: true,
+          options: type === 'single' ? (prompt.options || []).map((option) => ({
+            value: String(option.id), label: String(option.label), description: option.description,
+          })) : undefined,
+        };
+        const result = await this.requestQuestions('setup-auth', [question], prompt.signal, {
+          title: `CONNECT ${provider.name.toUpperCase()}`,
+          intro: 'Approx owns this screen. Pi owns the authentication and storage.',
+        });
+        if (result.cancelled) throw new Error('Pi setup cancelled');
+        return String(result.values[question.id] ?? '');
+      },
+      notify: (event) => {
+        const text = event?.message || (event?.url ? `Open ${event.url}` : 'Pi authentication update');
+        this.emit({ type: 'status', kind: 'info', text: String(text) });
+      },
+    };
+    try {
+      await this.modelRuntime.login(provider.id, authType, interaction);
+      await this.modelRuntime.refresh();
+      const models = await this.modelRuntime.getAvailable();
+      if (!models.length) throw new Error('Pi login succeeded but no usable models were found');
+      const model = models[0];
+      await this.session.setModel(this.session.modelRuntime.getModel(model.provider, model.id));
+      this.emit({ type: 'setup_complete', model: normalizeModel(this.session.model), models: models.map(normalizeModel) });
+      return true;
+    } catch (error) {
+      this.emit({ type: 'status', kind: 'warn', text: `Pi setup failed: ${formatError(error)}` });
+      return false;
+    }
   }
 
   resolveQuestionnaire(requestId, result) {

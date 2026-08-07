@@ -50,6 +50,7 @@ export function normalizeQuestionnaireRequest(value = {}) {
     let id = cleanId(raw.id) || `question-${i + 1}`;
     if (ids.has(id)) id = `${id}-${i + 1}`;
     ids.add(id);
+    const rawType = String(raw.type ?? '').toLowerCase();
     const type = normalizeQuestionType(raw.type);
     const options = type === 'text' ? [] : normalizeChoices(raw.options ?? raw.choices);
     // A malformed choice question remains answerable instead of trapping the UI.
@@ -57,6 +58,7 @@ export function normalizeQuestionnaireRequest(value = {}) {
     questions.push({
       id,
       type: resolvedType,
+      secret: type === 'text' && ['secret', 'password', 'api_key'].includes(rawType),
       prompt,
       description: cleanText(raw.description ?? raw.hint, 1_000),
       placeholder: cleanText(raw.placeholder, 300),
@@ -477,7 +479,7 @@ export const questionnaireMethods = {
 function normalizeQuestionType(value) {
   const type = String(value ?? 'single').toLowerCase();
   if (['multi', 'multiple', 'checkbox', 'checkboxes'].includes(type)) return 'multi';
-  if (['text', 'input', 'freeform', 'free_form'].includes(type)) return 'text';
+  if (['text', 'input', 'freeform', 'free_form', 'secret', 'password', 'api_key'].includes(type)) return 'text';
   return 'single';
 }
 

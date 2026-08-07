@@ -232,9 +232,10 @@ function drawTextQuestion(s, state, question, x, y, w, rows, bg, t, p) {
   state.hits.push({ kind: 'text', x1: x, x2: x + w - 1, y: y + 1 });
 
   const input = String(state.answers[question.id] ?? '');
+  const displayInput = question.secret ? [...input].map(() => '•').join('') : input;
   const innerW = Math.max(1, w - 4);
   const innerRows = Math.max(1, h - 2);
-  const layout = layoutComposerInput(input, innerW, state.textCursor);
+  const layout = layoutComposerInput(displayInput, innerW, state.textCursor);
   const start = clamp(layout.cursorRow - innerRows + 1, 0, Math.max(0, layout.lines.length - innerRows));
   for (let i = 0; i < innerRows; i++) {
     const line = layout.lines[start + i] ?? '';

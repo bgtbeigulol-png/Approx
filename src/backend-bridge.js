@@ -206,6 +206,16 @@ export const backendBridgeMethods = {
         this.restoreRuntimePreferences();
         this.persistPreferences();
         break;
+      case 'setup_required':
+        this.push({ role: 'system', text: String(event.text || 'No Pi model is configured. Opening Pi setup.') });
+        void this.backend?.startSetup?.();
+        break;
+      case 'setup_complete':
+        this.st.modelOptions = (event.models || []).filter(Boolean);
+        if (event.model) this.st.model = event.model.label;
+        this.toast('Pi setup complete', 'ok');
+        this.s.invalidate();
+        break;
       case 'history': this.loadHistory(event.messages); break;
       case 'plan_update':
         if (event.plan) this.applyPlanState(event.plan);
