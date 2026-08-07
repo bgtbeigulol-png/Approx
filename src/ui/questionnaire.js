@@ -35,6 +35,7 @@ export function drawQuestionnaire(s, st, t) {
   }
   const question = state.questions?.[state.index];
   if (!question) return null;
+  s.clearCursorAnchor();
 
   const g = questionnaireLayout(s.w, s.h, state, p);
   state.hits = [];
@@ -214,9 +215,9 @@ function drawOtherChoiceInput(s, state, question, x, y, w, h, bg, t, p) {
       mix(wellBg, T.dim, 0.8 * p), wellBg, ATTR_DIM);
   }
   const cursorX = x + 2 + clamp(layout.cursorCol, 0, Math.max(0, innerW - 1));
-  const blink = Math.floor(t * 6) % 2 === 0;
-  s.put(cursorX, y + 1, blink ? BLOCK.full : BLOCK.l4,
+  s.put(cursorX, y + 1, BLOCK.full,
     mix(wellBg, T.accent, 0.94 * p), wellBg, ATTR_BOLD);
+  s.setCursorAnchor(cursorX, y + 1);
   if (state.validation) {
     s.text(x + 2, y + h - 1, ellipsize(state.validation, Math.max(1, w - 4)),
       mix(wellBg, T.warn, p), wellBg, ATTR_BOLD);
@@ -249,10 +250,10 @@ function drawTextQuestion(s, state, question, x, y, w, rows, bg, t, p) {
   const cursorRow = clamp(layout.cursorRow - start, 0, innerRows - 1);
   const cursorX = x + 2 + layout.cursorCol;
   if (cursorX < x + w - 1) {
-    const blink = Math.floor(t * 6) % 2 === 0;
-    s.put(cursorX, y + 1 + cursorRow, blink ? BLOCK.full : BLOCK.l4,
+    s.put(cursorX, y + 1 + cursorRow, BLOCK.full,
       mix(wellBg, T.accent, 0.94 * p), wellBg, ATTR_BOLD);
   }
+  s.setCursorAnchor(Math.min(x + w - 2, cursorX), y + 1 + cursorRow);
 
   const meter = ` ${[...input].length}/${question.maxLength} `;
   if (strWidth(meter) + 5 < w) s.textRight(x + w - 2, y + h - 1, meter, mix(wellBg, T.dim, p), wellBg, ATTR_DIM);

@@ -65,6 +65,7 @@ export function drawPalette(s, st, t) {
   const { w, h } = s;
   const p = clamp(st.paletteAnim.v, 0, 1);
   if (p <= 0.001) return;
+  s.clearCursorAnchor();
 
   // scrim — dim the page behind, grain-preserving
   const k = p * 0.35;
@@ -94,7 +95,9 @@ export function drawPalette(s, st, t) {
 
   if (compact) {
     const label = ellipsize(`PALETTE ${st.paletteQuery}`, Math.max(1, pw - 4));
-    s.text(px + 2, py + Math.min(1, ph - 1), label, T.fg, T.panel, ATTR_BOLD, Math.max(0, pw - 4));
+    const labelY = py + Math.min(1, ph - 1);
+    const labelW = s.text(px + 2, labelY, label, T.fg, T.panel, ATTR_BOLD, Math.max(0, pw - 4));
+    s.setCursorAnchor(Math.min(px + pw - 2, px + 2 + labelW), labelY);
     return;
   }
 
@@ -112,8 +115,9 @@ export function drawPalette(s, st, t) {
   s.put(px + 2, qy, MARK.caret, T.accent, T.inset, ATTR_BOLD);
   const shownQuery = ellipsize(st.paletteQuery, Math.max(1, pw - 8));
   const shownQueryW = s.text(px + 4, qy, shownQuery, T.fg, T.inset);
-  const blink = Math.floor(t * 6) % 2 === 0;
-  s.put(Math.min(px + pw - 3, px + 4 + shownQueryW), qy, blink ? BLOCK.full : BLOCK.l4, T.accent, T.inset);
+  const queryCaretX = Math.min(px + pw - 3, px + 4 + shownQueryW);
+  s.put(queryCaretX, qy, BLOCK.full, T.accent, T.inset);
+  s.setCursorAnchor(queryCaretX, qy);
 
   rule(s, px + 1, py + 2, pw - 2, mix(T.inset, T.rule, 0.8), 0, T.panel);
 

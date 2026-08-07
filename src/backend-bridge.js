@@ -174,6 +174,7 @@ export const backendBridgeMethods = {
 
   onBackendEvent(event) {
     if (!event || !this.alive) return;
+    this.requestFrame();
     switch (event.type) {
       case 'ready':
         this.st.runtime = event.runtime || 'Approx';

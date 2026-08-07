@@ -1,10 +1,13 @@
 // Headless smoke test: drives the real render path against a fake TTY and
 // asserts the compositor, wrapping, input decoder, and animation core behave.
 
-import { Screen } from '../src/screen.js';
+import { Screen, enterTui } from '../src/screen.js';
 import { attach, decode } from '../src/input.js';
 import { wrapText, ellipsize, padTo } from '../src/wrap.js';
-import { strWidth, rgb, mix, clipboardSequence } from '../src/ansi.js';
+import {
+  strWidth, rgb, mix, moveTo, SHOW_CURSOR, CURSOR_STEADY_BAR,
+  SAVE_CURSOR, RESTORE_CURSOR, SYNC_START, SYNC_END, clipboardSequence,
+} from '../src/ansi.js';
 import { Spring, Tween, ease, clamp } from '../src/anim.js';
 import { drawSplash, SPLASH_MS } from '../src/ui/splash.js';
 import { drawPalette, fuzzy, filterCommands, paletteLayout } from '../src/ui/palette.js';
@@ -62,6 +65,35 @@ class FakeOut {
     return true;
   }
   on() {}
+}
+
+{
+  const tuiOut = new FakeOut();
+  enterTui(tuiOut);
+  ok('TUI exposes a steady native cursor for Windows IME', tuiOut.buf.includes(SHOW_CURSOR + CURSOR_STEADY_BAR));
+}
+
+// IME preedit does not produce Node key events. The idle clock must therefore
+// leave the terminal untouched until a real input/backend/resize event arrives.
+{
+  const imeApp = new App({ noSplash: true });
+  const imeOut = new FakeOut(80, 24);
+  imeApp.s = new Screen(imeOut);
+  imeApp.tick(1 / 60, 0, 0);
+  const idleStart = imeOut.buf.length;
+  for (let i = 1; i <= 12; i++) imeApp.tick(1 / 60, i / 60, i);
+  ok('idle composer does not repaint during IME preedit', imeOut.buf.length === idleStart);
+  imeApp.onKey({ name: 'x', printable: true });
+  imeApp.tick(1 / 60, 13 / 60, 13);
+  ok('committed key requests a composer frame', imeOut.buf.length > idleStart && imeApp.st.input === 'x');
+  imeApp.st.busy = true;
+  const busyStart = imeOut.buf.length;
+  for (let i = 14; i <= 25; i++) imeApp.tick(1 / 60, i / 60, i);
+  ok('busy clock does not repaint over queued IME input', imeOut.buf.length === busyStart);
+  imeApp.onBackendEvent({ type: 'assistant_delta', delta: 'live' });
+  imeApp.tick(1 / 60, 26 / 60, 26);
+  ok('backend activity requests a live frame', imeOut.buf.length > busyStart);
+  imeApp.clock.stop();
 }
 
 // ---- ansi / width ----
@@ -167,7 +199,23 @@ ok('idempotent flush is empty', out.buf.length === before);
 s.text(0, 0, 'HELLP', T.fg, T.bg);
 s.flush();
 const delta = out.buf.length - before;
-ok('diff flush is small', delta > 0 && delta < 60);
+ok('diff flush stays bounded with synchronized framing', delta > 0 && delta < 100);
+
+// Windows IME preedit follows the hidden terminal cursor. Every animated diff
+// must finish back at the editor caret instead of leaving it at the changed cell.
+const anchorStart = out.buf.length;
+s.setCursorAnchor(7, 5);
+s.flush();
+ok('cursor anchor moves even without a cell diff', out.buf.slice(anchorStart) === moveTo(7, 5));
+const animatedStart = out.buf.length;
+s.put(70, 20, 'X', T.accent, T.bg);
+s.flush();
+const animatedFrame = out.buf.slice(animatedStart);
+ok('animated diff preserves IME cursor without an absolute jump', animatedFrame.startsWith(SYNC_START + SAVE_CURSOR)
+  && animatedFrame.endsWith(RESTORE_CURSOR + SYNC_END));
+const anchoredLength = out.buf.length;
+s.flush();
+ok('stable cursor anchor emits no redundant write', out.buf.length === anchoredLength);
 
 // wide glyph reserves the next cell
 s.clear(T.bg, T.fg, null);
@@ -232,6 +280,20 @@ ok('bounds safe', !threw);
   drawComposer(cs, composerState, 1, 2, 38, 0);
   ok('Plan to Go restores composer color', cs.fg[borderCell] === T.accent2
     && cs.bg[shadowCell] === mix(T.bg, T.accent2, 0.2));
+
+  const emptyState = {
+    input: '', inputCursor: 0, _cursorInput: '', busy: false,
+    focusAnim: { v: 1 }, slashMatches: [], plan: { mode: 'go' },
+  };
+  cs.clear(T.bg, T.fg);
+  drawComposer(cs, emptyState, 1, 2, 38, 0);
+  const idleChars = cs.ch.join('');
+  const idleFg = Array.from(cs.fg);
+  cs.clear(T.bg, T.fg);
+  drawComposer(cs, emptyState, 1, 2, 38, 3.7);
+  ok('empty composer leaves a clean IME preedit row', !idleChars.includes('ask anything'));
+  ok('idle composer caret and prompt are time-stable', cs.ch.join('') === idleChars
+    && idleFg.every((color, index) => color === cs.fg[index]));
 }
 
 // Editable wrapping must preserve trailing whitespace and the actual cursor.

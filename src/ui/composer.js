@@ -47,9 +47,9 @@ export function drawComposer(s, st, x, y, w, t) {
     ...(st.messageEdit?.mode === 'editing' ? { label: 'EDIT USER', labelColor: T.accent } : {}),
   });
 
-  // prompt sigil in the left frame, pulses subtly when focused and idle
-  const pulse = st.busy ? 1 : 0.72 + 0.28 * Math.sin(t * 3.1);
-  s.put(x + 1, y + 1, MARK.tri_r, mix(bg, signal, focus * pulse), bg, ATTR_BOLD);
+  // Keep the editor row static while an IME owns preedit. Node receives only the
+  // committed text, so a time-driven pulse here would erase/recreate composition.
+  s.put(x + 1, y + 1, MARK.tri_r, mix(bg, signal, focus), bg, ATTR_BOLD);
 
   // the text
   const start = clamp(inputLayout.cursorRow - rows + 1, 0, Math.max(0, lines.length - rows));
@@ -58,20 +58,16 @@ export function drawComposer(s, st, x, y, w, t) {
     s.text(x + 3, y + 1 + i, ln, T.fg, bg, 0, iw);
   }
 
-  // placeholder
-  if (!st.input) {
-    const ph = st.busy ? 'working…  type next and enter to queue  ·  esc interrupts' : 'ask anything  ·  / for commands';
-    s.text(x + 3, y + 1, ellipsize(ph, iw), mix(bg, T.dim, 0.85), bg, ATTR_DIM);
-  }
+  // A placeholder cannot coexist with terminal-managed preedit: the IME only
+  // covers its own glyph span and leaves the rest of the placeholder attached.
+  // The prompt sigil and status shortcuts already communicate input ownership.
 
-  // caret — block when focused, thin bar when not
+  // Leave the anchor cell empty. The native terminal caret is visible there and
+  // Windows Terminal owns the preedit glyphs drawn over it.
   const caretRow = inputLayout.cursorRow - start;
   const cy = y + 1 + clamp(caretRow, 0, rows - 1);
   const cxp = x + 3 + inputLayout.cursorCol;
-  const blink = Math.floor(t * 6) % 2 === 0;
-  if (cxp < x + w - 2) {
-    s.put(cxp, cy, blink ? BLOCK.full : BLOCK.l4, mix(bg, signal, 0.95), bg);
-  }
+  s.setCursorAnchor(Math.min(x + w - 3, cxp), cy);
   // Busy no longer locks the editor: the shimmer signals an active turn while the
   // live caret makes it clear that the next prompt can already be composed.
   if (st.busy) shimmer(s, x + 1, y + h - 1, w - 2, t, border, signal, 11, 8);

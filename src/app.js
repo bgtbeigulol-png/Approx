@@ -33,6 +33,10 @@ export class App {
     this.clock = new Clock(60);
     this.detach = null;
     this.alive = true;
+    // The clock keeps simulation time moving, but terminal writes are requested
+    // by meaningful UI changes. In particular, Windows IME preedit produces no
+    // Node input event, so an idle composer must not repaint underneath it.
+    this.frameRequested = true;
     // When a harness owns stdin for its NDJSON command stream, the keyboard decoder
     // must not also claim stdin or the two fight over every byte.
     this.harnessDriven = harness;
@@ -104,7 +108,10 @@ export class App {
   later(fn, ms) {
     const id = setTimeout(() => {
       this.timers.delete(id);
-      if (this.alive) fn();
+      if (this.alive) {
+        this.requestFrame();
+        fn();
+      }
     }, ms);
     this.timers.add(id);
     return id;

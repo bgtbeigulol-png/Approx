@@ -221,9 +221,11 @@ export function drawJumpList(s, st, t) {
   const qy = py + 1;
   s.fillRect(px + 1, qy, pw - 2, 1, ' ', T.fg, T.crust);
   s.put(px + 2, qy, MARK.caret, T.accent, T.crust, ATTR_BOLD);
-  s.text(px + 4, qy, ellipsize(st.jumpQuery, pw - 8), T.ink, T.crust);
-  const blink = Math.floor(t * 6) % 2 === 0;
-  s.put(px + 4 + strWidth(st.jumpQuery), qy, blink ? BLOCK.full : BLOCK.l4, T.accent, T.crust);
+  const shownQuery = ellipsize(st.jumpQuery, pw - 8);
+  const shownQueryW = s.text(px + 4, qy, shownQuery, T.ink, T.crust);
+  const queryCaretX = Math.min(px + pw - 3, px + 4 + shownQueryW);
+  s.put(queryCaretX, qy, BLOCK.full, T.accent, T.crust);
+  s.setCursorAnchor(queryCaretX, qy);
   rule(s, px + 1, py + 2, pw - 2, mix(T.crust, T.sand, 0.8), 0, T.cream);
 
   const scroll = clamp(st.jumpScroll, 0, Math.max(0, results.length - rows));

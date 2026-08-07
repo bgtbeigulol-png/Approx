@@ -60,18 +60,25 @@ export const CLEAR_ALL = `${CSI}2J`;
 export const HOME = `${CSI}H`;
 export const HIDE_CURSOR = `${CSI}?25l`;
 export const SHOW_CURSOR = `${CSI}?25h`;
+export const CURSOR_STEADY_BAR = `${CSI}6 q`;
+export const CURSOR_DEFAULT = `${CSI}0 q`;
+export const SAVE_CURSOR = `${CSI}s`;
+export const RESTORE_CURSOR = `${CSI}u`;
+// Terminals that implement synchronized output present the whole diff only
+// after the logical cursor has been restored. Unsupported terminals ignore it.
+export const SYNC_START = `${CSI}?2026h`;
+export const SYNC_END = `${CSI}?2026l`;
 export const ALT_ON = `${CSI}?1049h`;
 export const ALT_OFF = `${CSI}?1049l`;
 export const WRAP_OFF = `${CSI}?7l`;
 export const WRAP_ON = `${CSI}?7h`;
-// Button/wheel/motion reporting (1003 = any-motion) in SGR encoding (1006),
-// plus focus in/out reporting (1004).
+// Button/wheel/motion reporting (1003 = any-motion) in SGR encoding (1006).
 // Any-motion is a real cost: it emits an event per cell the pointer crosses and
 // it takes text selection away from the terminal. We pay it because the nav rail
 // is hover-driven, and the frame diff means a move that changes nothing costs
 // nothing to draw. Motion events are dropped early unless they land on the rail.
-export const MOUSE_ON  = `${CSI}?1000h${CSI}?1003h${CSI}?1006h${CSI}?1004h`;
-export const MOUSE_OFF = `${CSI}?1004l${CSI}?1006l${CSI}?1003l${CSI}?1000l`;
+export const MOUSE_ON  = `${CSI}?1000h${CSI}?1003h${CSI}?1006h`;
+export const MOUSE_OFF = `${CSI}?1006l${CSI}?1003l${CSI}?1000l`;
 
 /** Copy UTF-8 text through the terminal clipboard protocol (OSC 52). */
 export function clipboardSequence(text) {

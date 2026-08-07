@@ -16,6 +16,7 @@ export function drawCompact(s, st, t) {
   if (!compact) return;
   const p = clamp(compact.enter?.v ?? 0, 0, 1);
   if (p <= 0.001) return;
+  s.clearCursorAnchor();
   if (s.w < 30 || s.h < 10) return drawCompactSmall(s, st, t, p);
 
   const running = compact.phase === 'running';

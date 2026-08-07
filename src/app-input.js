@@ -14,12 +14,12 @@ export const inputMethods = {
   onKey(k) {
     if (!this.alive) return;
 
-    // Terminal focus reporting is chrome, never composer input (and it must not
-    // count as the key that skips the splash screen).
+    // Focus reporting is disabled because an IME candidate window can generate
+    // focus churn in Windows Terminal. Ignore stray sequences from older hosts.
     if (k.name === 'focusin' || k.name === 'focusout') {
-      this.st.focusAnim.set(k.name === 'focusin' ? 1 : 0.35, this.st.reduceMotion);
       return;
     }
+    this.requestFrame();
 
     if (this.st.phase === 'splash') {
       this.st.splashMs = Math.max(this.st.splashMs, SPLASH_MS - 420);

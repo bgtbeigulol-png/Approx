@@ -1,6 +1,6 @@
 {
   "name": "@bgtbeigulol-png/approx",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.1-f1",
   "type": "module",
   "description": "Approx — a brutalist coding-agent TUI on condensed-milk paper",
   "bin": {

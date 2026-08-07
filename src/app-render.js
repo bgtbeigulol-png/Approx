@@ -23,6 +23,11 @@ import { drawTranscript, invalidateLayoutTree } from './ui/transcript.js';
 
 /** Animation advancement and frame composition. */
 export const renderMethods = {
+  /** Ask the next clock tick to compose and write a terminal frame. */
+  requestFrame() {
+    this.frameRequested = true;
+  },
+
   onResize() {
     this.s.resize(process.stdout.columns, process.stdout.rows);
     const width = this.bodyWidth();
@@ -35,7 +40,34 @@ export const renderMethods = {
     }
     invalidateLayoutTree(this.st.msgs);
     this.s.invalidate();
+    this.requestFrame();
     this.clampScroll();
+  },
+
+  shouldRenderFrame() {
+    const st = this.st;
+    if (this.frameRequested || st.phase === 'splash') return true;
+    if (st.wipe > 0 || st.showFps) return true;
+
+    const springs = [
+      st.ctxUse, st.focusAnim, st.paletteAnim, st.slashAnim, st.railBulge, st.railAmt,
+      st.settingsAnim, st.settingsCursor, st.settingsFlash, st.jumpAnim,
+      st.sessionPicker?.anim, st.rewindAnim, st.queueAnim, st.queuePulse,
+      st.compact?.enter, st.compact?.progress, st.compact?.pulse,
+      st.directoryPicker?.anim, st.directoryPicker?.cursor, st.directoryPicker?.travel, st.directoryPicker?.pulse,
+      st.git?.anim, st.git?.cursor, st.git?.pulse,
+      st.plan?.anim, st.plan?.pulse, st.plan?.cursorAnim,
+      st.questionnaire?.anim, st.questionnaire?.stepAnim, st.questionnaire?.cursorAnim,
+      st.questionnaire?.shake, st.questionnaire?.pulse,
+      st.scrollSpring,
+    ];
+    if (springs.some((spring) => spring && !spring.settled)) return true;
+    if (st.messageQueue.some((item) => (item.anim && !item.anim.settled) || (item.y && !item.y.settled))) return true;
+    if (st.queueGhosts.some((item) => (item.anim && !item.anim.settled) || (item.y && !item.y.settled))) return true;
+    return st.msgs.some((message) => message.enter < 1 || (message.streaming && !message._live)
+      || (message._selectAnim && !message._selectAnim.settled)
+      || animatedToolNodes(message).some((tool) => (tool.running && tool._dur)
+        || (tool.expandAnim && !tool.expandAnim.settled)));
   },
 
   tick(dt, t, frame) {
@@ -58,8 +90,10 @@ export const renderMethods = {
     }
 
     this.update(dt, t);
+    if (!this.shouldRenderFrame()) return;
     this.render(t);
     this.s.flush();
+    this.frameRequested = false;
   },
 
   update(dt, t) {
@@ -150,7 +184,10 @@ export const renderMethods = {
 
     if (st.toastLife > 0) {
       st.toastLife -= dt;
-      if (st.toastLife <= 0) st.toast = null;
+      if (st.toastLife <= 0) {
+        st.toast = null;
+        this.requestFrame();
+      }
     }
 
     const max = this.maxScroll();

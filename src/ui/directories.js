@@ -41,6 +41,7 @@ export function drawDirectories(s, st, t = 0) {
   if (!picker) return;
   const p = clamp(picker.anim.v, 0, 1);
   if (p <= 0.001) return;
+  s.clearCursorAnchor();
   const g = directoryLayout(s.w, s.h, picker.items.length, p);
 
   for (let sy = 0; sy < s.h; sy++) for (let sx = 0; sx < s.w; sx++) {
@@ -81,9 +82,10 @@ export function drawDirectories(s, st, t = 0) {
     const valueX = g.px + 2 + strWidth(prefix);
     const valueW = Math.max(1, g.px + g.pw - 2 - valueX);
     s.text(valueX, g.pathY, ellipsize(value || 'type a path', valueW), pathFg, pathBg, picker.editingPath ? ATTR_BOLD : 0, valueW);
-    if (picker.editingPath && Math.floor(t * 2.2) % 2 === 0) {
+    if (picker.editingPath) {
       const caretX = Math.min(g.px + g.pw - 3, valueX + strWidth(ellipsize(value, valueW - 1)));
       s.put(caretX, g.pathY, BLOCK.full, T.accent, pathBg);
+      s.setCursorAnchor(caretX, g.pathY);
     }
   }
 
