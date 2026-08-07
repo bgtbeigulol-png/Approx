@@ -2,7 +2,7 @@
 // the streaming message reveals character by character with a live caret.
 
 import { ATTR_BOLD, ATTR_DIM, ATTR_ITALIC, DEFAULT, strWidth } from '../ansi.js';
-import { BLOCK, MARK, HEAVY, LIGHT, SPIN_BRAILLE } from '../glyphs.js';
+import { BLOCK, DASH, MARK, HEAVY, LIGHT, SPIN_BRAILLE } from '../glyphs.js';
 import { T, ROLE, mix } from '../theme.js';
 import { ease, clamp, norm } from '../anim.js';
 import { rule, vrule, panel, textReveal, bar } from '../draw.js';
@@ -13,6 +13,7 @@ const GUTTER = 3; // bar + gap
 
 /** Lay a message out into renderable lines. Cached on the message object. */
 export function layout(msg, w) {
+  if (msg.role === 'system' && msg.subtype === 'changeset') return changesetLayout(msg, w);
   if (msg.role === 'workgroup') return workGroupLayout(msg, w);
   if (msg.role === 'toolgroup') return toolGroupLayout(msg, w);
   const markdown = msg.markdown !== false;
@@ -52,6 +53,11 @@ export function invalidateLayoutTree(messages) {
 
 export function visibleLines(msg, w) {
   const lines = layout(msg, w);
+  if (msg.role === 'system' && msg.subtype === 'changeset') {
+    const p = clamp(msg.expandAnim?.v ?? (msg.expanded ? 1 : 0), 0, 1);
+    const rows = Math.ceil(Math.max(0, lines.length - 1) * ease.outCubic(p));
+    return lines.slice(0, 1 + rows);
+  }
   if (msg.role === 'workgroup') {
     const outerP = clamp(msg.expandAnim?.v ?? (msg.expanded ? 1 : 0), 0, 1);
     if (outerP <= 0.001) return lines.slice(0, 1);
@@ -76,6 +82,36 @@ export function visibleLines(msg, w) {
   const p = clamp(msg.expandAnim?.v ?? (msg.expanded ? 1 : 0), 0, 1);
   const body = Math.ceil(Math.max(0, lines.length - 1) * ease.outCubic(p));
   return lines.slice(0, 1 + body);
+}
+
+function changesetLayout(message, w) {
+  const open = layoutMode(message) === 1;
+  if (message._lw === w && message._layoutMode === (open ? 1 : 0) && message._lines) return message._lines;
+  const lines = [{ kind: 'changesethead', text: message.title || 'FILE CHANGES', changeset: message }];
+  if (open) {
+    for (const file of message.files ?? []) {
+      lines.push({ kind: 'changefilehead', text: file.displayPath || file.path, file });
+      if (file.binary) {
+        lines.push({ kind: 'changediff', text: 'binary content changed', file,
+          diffKind: 'meta', oldLine: null, newLine: null });
+        continue;
+      }
+      for (const row of file.diff ?? []) {
+        lines.push({
+          kind: 'changediff',
+          text: row.text,
+          file,
+          diffKind: row.kind,
+          oldLine: row.oldLine,
+          newLine: row.newLine,
+        });
+      }
+    }
+  }
+  message._lines = lines;
+  message._lw = w;
+  message._layoutMode = open ? 1 : 0;
+  return lines;
 }
 
 function toolGroupLayout(group, w) {
@@ -234,9 +270,10 @@ function drawMessage(s, msg, x, y, w, clip, t) {
     let hx = x + dx;
     const tagBg = mix(T.bg, role.bar, fade);
     const tagFg = mix(T.bg, T.bg, 1);
+    const tag = msg.subtype === 'changeset' ? 'SYSTEM' : role.tag;
     s.put(hx, y, BLOCK.full, tagBg);
     hx += 1;
-    hx += s.text(hx + 1, y, role.tag, mix(T.bg, role.color, fade), DEFAULT, ATTR_BOLD) + 1;
+    hx += s.text(hx + 1, y, tag, mix(T.bg, role.color, fade), DEFAULT, ATTR_BOLD) + 1;
     let right = x + w - 1;
     if (msg.time) {
       s.textRight(right, y, msg.time, mix(T.bg, T.sand, fade * 0.9), DEFAULT, ATTR_DIM);
@@ -358,6 +395,15 @@ function drawMessage(s, msg, x, y, w, clip, t) {
       case 'workgrouphead':
         drawWorkGroupHead(s, bx, ry, bw, ln, fade, msg, t);
         break;
+      case 'changesethead':
+        drawChangesetHead(s, bx, ry, bw, ln, fade, msg);
+        break;
+      case 'changefilehead':
+        drawChangeFileHead(s, bx, ry, bw, ln, fade);
+        break;
+      case 'changediff':
+        drawChangeDiff(s, bx, ry, bw, ln, fade);
+        break;
       case 'worknote':
         s.put(bx, ry, LIGHT.v, mix(T.bg, T.rule, fade * 0.75));
         drawInline(s, bx + 2, ry, ln, revealCols, fade, bw - 2, T.slate, DEFAULT, ATTR_DIM);
@@ -451,6 +497,67 @@ function drawWorkGroupHead(s, x, y, w, ln, fade, group, t) {
   const room = Math.max(1, w - 4 - strWidth(stat));
   hx += s.text(hx, y, ln.text, mix(T.bg, T.accent2, fade), DEFAULT, ATTR_BOLD, room);
   s.textRight(x + w - 1, y, stat, mix(T.bg, T.dim, fade), DEFAULT, ATTR_DIM);
+}
+
+function drawChangesetHead(s, x, y, w, ln, fade, message) {
+  const summary = message.summary ?? { files: message.files?.length ?? 0, added: 0, removed: 0 };
+  const stat = `${summary.files} file${summary.files === 1 ? '' : 's'}  +${summary.added} -${summary.removed}`;
+  s.fillRect(x, y, w, 1, ' ', T.fg, T.bg);
+  s.put(x, y, message.expanded ? '▾' : '▸', mix(T.bg, T.accent2, fade), DEFAULT, ATTR_BOLD);
+  s.put(x + 2, y, MARK.diamond, mix(T.bg, T.plum, fade), DEFAULT, ATTR_BOLD);
+  const room = Math.max(1, w - 5 - strWidth(stat));
+  s.text(x + 4, y, ellipsize(ln.text, room), mix(T.bg, T.fg, fade), DEFAULT, ATTR_BOLD, room);
+  if (w > strWidth(stat) + 6) {
+    const statX = x + w - strWidth(stat);
+    let sx = statX;
+    sx += s.text(sx, y, `${summary.files} file${summary.files === 1 ? '' : 's'}  `,
+      mix(T.bg, T.dim, fade), DEFAULT, ATTR_DIM);
+    sx += s.text(sx, y, `+${summary.added}`, mix(T.bg, T.ok, fade), DEFAULT, ATTR_BOLD);
+    s.text(sx, y, ` -${summary.removed}`, mix(T.bg, T.accent, fade), DEFAULT, ATTR_BOLD);
+  }
+}
+
+function drawChangeFileHead(s, x, y, w, ln, fade) {
+  const file = ln.file;
+  const added = file.kind === 'added';
+  const deleted = file.kind === 'deleted';
+  const color = added ? T.ok : deleted ? T.accent : T.accent2;
+  const rail = deleted ? DASH.v : added ? HEAVY.v : LIGHT.v;
+  const bg = mix(T.bg, color, 0.06 * fade);
+  s.fillRect(x, y, w, 1, ' ', T.fg, bg);
+  s.put(x, y, rail, mix(bg, color, fade), bg, ATTR_BOLD);
+  const badge = added ? 'NEW' : deleted ? 'DEL' : 'MOD';
+  s.text(x + 2, y, badge, mix(bg, color, fade), bg, ATTR_BOLD, Math.max(0, w - 2));
+  const stat = file.binary ? 'BIN' : `+${file.added} -${file.removed}`;
+  const pathX = x + 6;
+  const room = Math.max(1, w - 7 - strWidth(stat));
+  if (pathX < x + w) s.text(pathX, y, ellipsize(ln.text, room), mix(bg, T.fg, fade), bg, ATTR_BOLD, room);
+  if (w > 12) s.textRight(x + w - 1, y, stat, mix(bg, color, fade), bg, ATTR_BOLD);
+}
+
+function drawChangeDiff(s, x, y, w, ln, fade) {
+  const kind = ln.diffKind;
+  const fileKind = ln.file?.kind;
+  const added = kind === 'add';
+  const deleted = kind === 'del';
+  const color = added ? T.ok : deleted ? T.accent : kind === 'hunk' ? T.accent2 : kind === 'meta' ? T.dim : T.slate;
+  const bg = added ? mix(T.bg, T.ok, 0.08 * fade) : deleted ? mix(T.bg, T.accent, 0.07 * fade) : T.bg;
+  s.fillRect(x, y, w, 1, ' ', T.fg, bg);
+  const rail = deleted || fileKind === 'deleted' ? DASH.v : added || fileKind === 'added' ? HEAVY.v : LIGHT.v;
+  const railColor = deleted || fileKind === 'deleted' ? T.accent : added || fileKind === 'added' ? T.ok : T.accent2;
+  s.put(x, y, rail, mix(bg, railColor, fade * 0.9), bg, ATTR_BOLD);
+  const numberW = w < 42 ? 3 : 4;
+  let tx = x + 2;
+  s.text(tx, y, ln.oldLine == null ? ' '.repeat(numberW) : String(ln.oldLine).padStart(numberW),
+    mix(bg, T.dim, fade * 0.72), bg, ATTR_DIM, numberW);
+  tx += numberW + 1;
+  s.text(tx, y, ln.newLine == null ? ' '.repeat(numberW) : String(ln.newLine).padStart(numberW),
+    mix(bg, T.dim, fade * 0.72), bg, ATTR_DIM, numberW);
+  tx += numberW + 1;
+  const prefix = added ? '+' : deleted ? '-' : kind === 'hunk' ? '@' : ' ';
+  s.put(tx++, y, prefix, mix(bg, color, fade), bg, ATTR_BOLD);
+  if (tx < x + w) s.text(tx, y, ellipsize(ln.text, x + w - tx), mix(bg, color, fade), bg,
+    kind === 'hunk' ? ATTR_BOLD : 0, x + w - tx);
 }
 
 function drawToolGroupHead(s, x, y, w, ln, fade, group, t) {

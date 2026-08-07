@@ -1,5 +1,6 @@
 import { Spring, clamp } from './anim.js';
 import { createDirectoryPickerState, formatWorkingDirectory } from './directories.js';
+import { createGitState } from './git.js';
 import { createPlanState } from './plan.js';
 import { createQuestionnaireState } from './questionnaire.js';
 import { createSessionPickerState } from './sessions.js';
@@ -126,6 +127,7 @@ export function createAppState({ noSplash = false, backend = null, preferences =
     lastUserClick: null,
     sessionPicker: createSessionPickerState(),
     directoryPicker: createDirectoryPickerState(initialCwd),
+    git: createGitState(),
     plan: createPlanState(),
     questionnaire: createQuestionnaireState(),
   };

@@ -84,6 +84,11 @@ export const backendBridgeMethods = {
       expandAnim: new Spring(0, { stiff: 18, damp: 0.86 }),
     });
     this.liveTools.set(id, tool);
+    const mutationTool = /^(write|edit)$/i.test(tool.name);
+    const mutationCallIds = this._activeTurn ? (this._activeTurn.mutationCallIds ??= []) : [];
+    if (mutationTool && this._activeTurn && !mutationCallIds.includes(id)) {
+      mutationCallIds.push(id);
+    }
     const group = this.toolGroupFor(tool);
     this.st.toolFocus = group && !group.expanded ? group.callId : id;
     this.st.busy = true;
@@ -127,7 +132,11 @@ export const backendBridgeMethods = {
     tool.isError = !!event.isError;
     tool.progress = null;
     tool.meta = event.isError ? 'error' : (tool.meta || 'done');
-    if (event.mutation) tool.mutation = event.mutation;
+    if (event.mutation) {
+      tool.mutation = event.mutation;
+      if (this._activeTurn) this._activeTurn.mutations.push(event.mutation);
+      else this._detachedMutations.push(event.mutation);
+    }
     tool._lines = null;
     tool._lw = -1;
     invalidateLayoutTree(this.st.msgs);
@@ -139,6 +148,7 @@ export const backendBridgeMethods = {
     this._pendingLiveDelta = '';
     this.liveTools.clear();
     this._activeTurn = null;
+    this._detachedMutations = [];
     this.st.messageQueue = [];
     this.st.queueGhosts = [];
     this.st.queueHits = [];
@@ -171,6 +181,10 @@ export const backendBridgeMethods = {
             tool.expandAnim = new Spring(tool.expanded ? 1 : 0, { stiff: 18, damp: 0.86 });
           }
         }
+      }
+      if (msg.role === 'system' && msg.subtype === 'changeset') {
+        msg.expanded = !!msg.expanded;
+        msg.expandAnim = new Spring(msg.expanded ? 1 : 0, { stiff: 18, damp: 0.86 });
       }
       this.push(msg);
     }
@@ -370,6 +384,7 @@ export const backendBridgeMethods = {
         // History/test feeds may deliver a settled marker without an active turn.
         // Those entries are complete already and still need their archived view.
         if (!hadActiveTurn) this.archiveCompletedWork();
+        if (!hadActiveTurn) this.appendDetachedFileChanges();
         break;
       default: break;
     }

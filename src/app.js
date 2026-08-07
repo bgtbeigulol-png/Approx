@@ -15,6 +15,7 @@ import { queueMethods } from './queue.js';
 import { runtimeSettingMethods } from './runtime-settings.js';
 import { backendBridgeMethods } from './backend-bridge.js';
 import { directoryMethods, sameDirectory } from './directories.js';
+import { gitMethods } from './git.js';
 import { planMethods } from './plan.js';
 import { questionnaireMethods } from './questionnaire.js';
 import { inputMethods } from './app-input.js';
@@ -45,6 +46,7 @@ export class App {
     this._queueSeq = 0;
     this._turnSeq = 0;
     this._activeTurn = null;
+    this._detachedMutations = [];
 
     this.persistenceEnabled = !!persist;
     this.preferences = this.persistenceEnabled ? loadPreferences() : {};
@@ -121,7 +123,7 @@ Object.assign(App.prototype, transcriptMethods);
 Object.assign(App.prototype, interactionMethods);
 
 Object.assign(App.prototype, queueMethods);
-Object.assign(App.prototype, directoryMethods, planMethods, questionnaireMethods);
+Object.assign(App.prototype, directoryMethods, gitMethods, planMethods, questionnaireMethods);
 Object.assign(App.prototype, inputMethods);
 // ---------- overlays ----------
 

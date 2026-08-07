@@ -2,6 +2,7 @@ import { Spring, clamp } from './anim.js';
 import { RESET, sgr } from './ansi.js';
 import { totalChars } from './app-geometry.js';
 import { Screen } from './screen.js';
+import { buildFileChanges, summarizeFileChanges } from './file-changes.js';
 import { invalidateLayoutTree } from './ui/transcript.js';
 
 /** Transcript mutation, WORK archival, streaming, snapshots, and resets. */
@@ -16,7 +17,8 @@ export const transcriptMethods = {
     };
     if (landed.markdown == null) {
       landed.markdown = landed.role !== 'user' && landed.role !== 'tool'
-        && landed.role !== 'toolgroup' && landed.role !== 'workgroup' && this.st.markdown;
+        && landed.role !== 'toolgroup' && landed.role !== 'workgroup'
+        && landed.subtype !== 'changeset' && this.st.markdown;
     }
     if (landed.role === 'tool') this.landTool(landed);
     else this.st.msgs.push(landed);
@@ -192,6 +194,35 @@ export const transcriptMethods = {
     };
   },
 
+  appendTurnFileChanges(turn) {
+    if (!turn || turn.changesDelivered) return null;
+    turn.changesDelivered = true;
+    const journal = this.backend?.mutationsForCalls?.(turn.mutationCallIds ?? []) ?? [];
+    const transcript = collectLatestTurnMutations(this.st.msgs);
+    const files = buildFileChanges([...(turn.mutations ?? []), ...journal, ...transcript], this.st.cwdPath);
+    if (!files.length) return null;
+    const summary = summarizeFileChanges(files);
+    const message = this.push({
+      role: 'system',
+      subtype: 'changeset',
+      title: 'FILE CHANGES',
+      text: '',
+      files,
+      summary,
+      expanded: false,
+      expandAnim: new Spring(0, { stiff: 18, damp: 0.86 }),
+      markdown: false,
+    });
+    this.st.toolFocus = message;
+    return message;
+  },
+
+  appendDetachedFileChanges() {
+    if (!this._detachedMutations.length) return null;
+    const mutations = this._detachedMutations.splice(0);
+    return this.appendTurnFileChanges({ mutations, mutationCallIds: [] });
+  },
+
   toolGroupFor(tool) {
     for (const message of this.st.msgs) {
       const group = findToolGroup(message, tool);
@@ -272,6 +303,20 @@ export const transcriptMethods = {
         notes: (message.notes ?? []).map(snap),
         tools: (message.tools ?? []).map(snap),
       } : {}),
+      ...(message.role === 'system' && message.subtype === 'changeset' ? {
+        subtype: 'changeset',
+        expanded: !!message.expanded,
+        summary: { ...message.summary },
+        files: (message.files ?? []).map((file) => ({
+          path: file.path,
+          displayPath: file.displayPath,
+          kind: file.kind,
+          added: file.added,
+          removed: file.removed,
+          binary: !!file.binary,
+          diff: (file.diff ?? []).map((line) => ({ ...line })),
+        })),
+      } : {}),
     });
     return this.st.msgs.map(snap);
   },
@@ -282,6 +327,7 @@ export const transcriptMethods = {
     this._pendingLiveDelta = '';
     this.liveTools.clear();
     this._activeTurn = null;
+    this._detachedMutations = [];
     this.st.messageQueue = [];
     this.st.queueGhosts = [];
     this.st.queueHits = [];
@@ -428,6 +474,20 @@ function flattenArchiveTools(message, output) {
       for (const tool of group.tools ?? []) output.push(tool);
     }
   }
+}
+
+function collectLatestTurnMutations(messages) {
+  const userIndex = messages.findLastIndex((message) => message?.role === 'user');
+  const mutations = [];
+  const takeTool = (tool) => { if (tool?.mutation) mutations.push(tool.mutation); };
+  for (const message of messages.slice(userIndex + 1)) {
+    if (message.role === 'tool') takeTool(message);
+    if (message.role === 'toolgroup') for (const tool of message.tools ?? []) takeTool(tool);
+    if (message.role === 'workgroup') {
+      for (const group of message.tools ?? []) for (const tool of group.tools ?? []) takeTool(tool);
+    }
+  }
+  return mutations;
 }
 
 function findToolGroup(container, tool) {

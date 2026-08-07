@@ -446,6 +446,10 @@ export class PiBackend {
     return this.resolveUserEntry(text);
   }
 
+  mutationsForCalls(callIds = []) {
+    return callIds.map((id) => this.mutationJournal.get(String(id))).filter(Boolean);
+  }
+
   /**
    * Branch to immediately before a user message and restore every captured file
    * mutation in the abandoned suffix. Returns the old leaf needed for one redo.

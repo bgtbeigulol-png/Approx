@@ -9,6 +9,9 @@ import { Spring, Tween, ease, clamp } from '../src/anim.js';
 import { drawSplash, SPLASH_MS } from '../src/ui/splash.js';
 import { drawPalette, fuzzy, filterCommands, paletteLayout } from '../src/ui/palette.js';
 import { drawTranscript, layout, totalHeight, visibleLines } from '../src/ui/transcript.js';
+import { drawGit } from '../src/ui/git.js';
+import { buildFileChanges } from '../src/file-changes.js';
+import { parseGitStatus } from '../src/git.js';
 import { railTicks, tickAtRow, tickLabel, RAIL_W } from '../src/ui/rail.js';
 import { settingsModel, settingsRows, applySetting } from '../src/settings.js';
 import { drawJumpList, jumpResults, jumpLabel, jumpLayout, logicalTimeline } from '../src/ui/jumplist.js';
@@ -28,6 +31,7 @@ import { App } from '../src/app.js';
 import { PiBackend } from '../src/backends/pi.js';
 import { T, paper, drawPaperGrain } from '../src/theme.js';
 import { EventEmitter } from 'node:events';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -783,8 +787,9 @@ try {
 
   // palette open, filter, move, close
   app.openPalette();
-  ok('palette keeps nine curated controls plus conversation history', app.st.paletteResults.length === 9
+  ok('palette keeps ten curated controls plus Git and conversation history', app.st.paletteResults.length === 10
     && app.st.paletteResults.some((item) => item.name === 'history')
+    && app.st.paletteResults.some((item) => item.name === 'git')
     && app.st.paletteResults.every((item) => item.palette) && !app.st.paletteResults.some((item) => item.name === 'help'));
   app.onKey({ name: 't', printable: true });
   app.onKey({ name: 'down' });
@@ -2073,7 +2078,166 @@ ok('app drive clean', !appThrew);
   ok('rewind restores file preimage', readFileSync(file, 'utf8') === 'before' && token.oldLeafId === 'old-leaf');
   await backend.redoRewind(token, [mutation]);
   ok('redo restores file postimage', readFileSync(file, 'utf8') === 'after');
+
+  const delivery = new App({ noSplash: true, backend });
+  delivery.s = new Screen(new FakeOut(90, 28));
+  delivery.push({ role: 'user', text: 'edit through Pi', enter: 1 });
+  delivery.push({ role: 'approx', text: 'done', stopReason: 'stop', enter: 1 });
+  const deliveryTurn = {
+    finalDelivered: true, promiseDone: true, runtimeSettled: true,
+    interrupted: false, failed: false, releasing: false,
+    mutations: [], mutationCallIds: ['edit-1'],
+  };
+  delivery._activeTurn = deliveryTurn;
+  delivery.tryReleaseTurn(deliveryTurn);
+  ok('delivery boundary recovers Pi mutations by tool call id', delivery.st.msgs.at(-1)?.subtype === 'changeset'
+    && delivery.st.msgs.at(-1)?.summary?.files === 1);
+  delivery.backendUnsubscribe?.();
+  delivery.clock.stop();
   rmSync(dir, { recursive: true, force: true });
+}
+
+// ---- per-turn FILE CHANGES summary and shared diff model ----
+{
+  const snapshot = (text, exists = true) => ({
+    exists,
+    data: exists ? Buffer.from(text).toString('base64') : '',
+  });
+  const editedPath = join(process.cwd(), 'src', 'fixture-edit.js');
+  const newPath = join(process.cwd(), 'src', 'fixture-new.js');
+  const deletedPath = join(process.cwd(), 'src', 'fixture-old.js');
+  const mutations = [
+    { path: editedPath, before: snapshot('alpha\n'), after: snapshot('beta\n') },
+    { path: editedPath, before: snapshot('beta\n'), after: snapshot('gamma\n') },
+    { path: newPath, before: snapshot('', false), after: snapshot('one\ntwo\n') },
+    { path: deletedPath, before: snapshot('gone\n'), after: snapshot('', false) },
+  ];
+  const files = buildFileChanges(mutations, process.cwd());
+  const edited = files.find((file) => file.kind === 'modified');
+  const added = files.find((file) => file.kind === 'added');
+  const deleted = files.find((file) => file.kind === 'deleted');
+  ok('turn mutations merge first preimage into final postimage', files.length === 3
+    && edited.added === 1 && edited.removed === 1
+    && edited.diff.some((line) => line.kind === 'del' && line.text === 'alpha')
+    && edited.diff.some((line) => line.kind === 'add' && line.text === 'gamma'));
+  ok('file change model counts new and deleted lines', added.added === 2 && deleted.removed === 1);
+  ok('diff rows carry old and new line numbers', edited.diff.some((line) => line.kind === 'del' && line.oldLine === 1)
+    && edited.diff.some((line) => line.kind === 'add' && line.newLine === 1));
+
+  const changesApp = new App({ noSplash: true });
+  changesApp.s = new Screen(new FakeOut(100, 40));
+  changesApp.push({ role: 'user', text: 'change files', enter: 1 });
+  changesApp.push({ role: 'approx', text: 'Done.', stopReason: 'stop', enter: 1 });
+  const turn = {
+    finalDelivered: true, promiseDone: true, runtimeSettled: true,
+    interrupted: false, failed: false, releasing: false, mutations,
+  };
+  changesApp._activeTurn = turn;
+  changesApp.tryReleaseTurn(turn);
+  const changeset = changesApp.st.msgs.at(-1);
+  changeset.enter = 1;
+  ok('completed turn appends SYSTEM changes after final APPROX', changesApp.st.msgs.map((msg) => `${msg.role}:${msg.subtype || ''}`).join('|')
+    === 'user:|approx:|system:changeset');
+  ok('FILE CHANGES starts collapsed with aggregate counts', visibleLines(changeset, 80).length === 1
+    && changeset.summary.files === 3 && changeset.summary.added === 3 && changeset.summary.removed === 2);
+  changesApp.onKey({ name: 'u', ctrl: true });
+  const keyboardExpanded = changeset.expanded;
+  changeset.expandAnim.set(1, true);
+  ok('keyboard expands focused FILE CHANGES', keyboardExpanded
+    && visibleLines(changeset, 80).some((line) => line.kind === 'changediff'));
+  changesApp.onKey({ name: 'u', ctrl: true });
+  changesApp.st.scroll = 0;
+  changesApp.st.scrollTarget = 0;
+  changesApp.render(0);
+  const vp = changesApp.viewport();
+  const docTop = changesApp.st.msgs.slice(0, -1).reduce((sum, msg) => sum + totalHeight([msg], changesApp.bodyWidth()), 0);
+  changesApp.onKey({ name: 'mousedown', mouse: true, x: vp.x + 4, y: vp.y + docTop + 1 });
+  ok('clicking FILE CHANGES header expands it', changeset.expanded);
+
+  const transcriptScreen = new Screen(new FakeOut(100, 40));
+  transcriptScreen.clear(T.bg, T.fg);
+  changeset.expandAnim.set(1, true);
+  drawTranscript(transcriptScreen, [changeset], 0, 0, 100, 40, 0, 0);
+  ok('new file uses green solid diff rail', transcriptScreen.ch.some((ch, index) => ch === '┃' && transcriptScreen.fg[index] === T.ok));
+  ok('deleted file uses red dashed diff rail', transcriptScreen.ch.some((ch, index) => ch === '╎' && transcriptScreen.fg[index] === T.accent));
+  const changeSnapshot = changesApp.snapshot().at(-1);
+  ok('snapshot preserves expandable FILE CHANGES diff', changeSnapshot.subtype === 'changeset'
+    && changeSnapshot.files.length === 3 && changeSnapshot.files[0].diff.length > 0);
+
+  const quietApp = new App({ noSplash: true });
+  quietApp.push({ role: 'user', text: 'read only', enter: 1 });
+  quietApp.push({ role: 'approx', text: 'No edits.', stopReason: 'stop', enter: 1 });
+  const quietTurn = {
+    finalDelivered: true, promiseDone: true, runtimeSettled: true,
+    interrupted: false, failed: false, releasing: false, mutations: [],
+  };
+  quietApp._activeTurn = quietTurn;
+  quietApp.tryReleaseTurn(quietTurn);
+  ok('read-only turn does not add an empty FILE CHANGES row', !quietApp.st.msgs.some((msg) => msg.subtype === 'changeset'));
+  changesApp.clock.stop();
+  quietApp.clock.stop();
+}
+
+// ---- Git workbench status, operations, and responsive render ----
+{
+  const parsed = parseGitStatus('## main...origin/main [ahead 2, behind 1]\0 M src/a.js\0A  src/new.js\0R  src/to.js\0src/from.js\0?? loose.txt\0');
+  ok('git status parser keeps branch divergence', parsed.branch.name === 'main'
+    && parsed.branch.upstream === 'origin/main' && parsed.branch.ahead === 2 && parsed.branch.behind === 1);
+  ok('git status parser splits worktree and staged lanes', parsed.worktree.length === 2 && parsed.staged.length === 2
+    && parsed.staged.find((file) => file.mark === 'R')?.originalPath === 'src/from.js');
+
+  const gitApp = new App({ noSplash: true });
+  gitApp.s = new Screen(new FakeOut(100, 30));
+  gitApp.st.git.anim.set(1, true);
+  gitApp.st.git.branch = parsed.branch;
+  gitApp.st.git.lanes = [parsed.worktree, parsed.staged];
+  gitApp.st.git.commits = [{ hash: 'abc1234', subject: 'Make Git visual', age: 'now' }];
+  gitApp.st.git.diffPath = 'src/a.js';
+  gitApp.st.git.diff = [
+    { kind: 'hunk', text: '@@ -1,1 +1,1 @@', oldLine: null, newLine: null },
+    { kind: 'del', text: 'old', oldLine: 1, newLine: null },
+    { kind: 'add', text: 'new', oldLine: null, newLine: 1 },
+  ];
+  gitApp.s.clear(T.bg, T.fg);
+  drawGit(gitApp.s, gitApp.st, 0.4);
+  const gitFrame = gitApp.s.ch.join('');
+  ok('Git workbench renders lanes, index gate, and numbered diff', gitFrame.includes('WORKTREE')
+    && gitFrame.includes('STAGED') && gitFrame.includes('INDEX') && gitFrame.includes('src/a.js'));
+  ok('Git workbench translates untracked question marks into a green add marker', !gitFrame.includes('??')
+    && gitFrame.includes('+  loose.txt'));
+  ok('Git workbench exposes mouse targets', gitApp.st.git.hits.some((hit) => hit.kind === 'file')
+    && gitApp.st.git.hits.some((hit) => hit.kind === 'gate') && gitApp.st.git.hits.some((hit) => hit.kind === 'commit'));
+  let narrowGitThrew = false;
+  try {
+    const narrow = new Screen(new FakeOut(24, 9));
+    narrow.clear(T.bg, T.fg);
+    drawGit(narrow, gitApp.st, 0.6);
+  } catch {
+    narrowGitThrew = true;
+  }
+  ok('Git workbench renders in a narrow terminal', !narrowGitThrew);
+
+  const repo = mkdtempSync(join(tmpdir(), 'approx-git-'));
+  const run = (args) => spawnSync('git', args, { cwd: repo, encoding: 'utf8', windowsHide: true });
+  run(['init', '-q']);
+  run(['config', 'user.email', 'approx@example.test']);
+  run(['config', 'user.name', 'Approx Test']);
+  writeFileSync(join(repo, 'tracked.txt'), 'base\n', 'utf8');
+  run(['add', 'tracked.txt']);
+  run(['commit', '-q', '-m', 'base']);
+  writeFileSync(join(repo, 'tracked.txt'), 'changed\n', 'utf8');
+  gitApp.st.cwdPath = repo;
+  await gitApp.refreshGit();
+  ok('Git refresh reads worktree diff', gitApp.st.git.lanes[0][0]?.path === 'tracked.txt'
+    && gitApp.st.git.diff.some((line) => line.kind === 'add' && line.text === 'changed'));
+  await gitApp.gitStageAll();
+  ok('Git stage-all moves changes through the index gate', gitApp.st.git.lanes[0].length === 0
+    && gitApp.st.git.lanes[1][0]?.path === 'tracked.txt');
+  await gitApp.gitUnstageAll();
+  ok('Git unstage-all returns changes to worktree', gitApp.st.git.lanes[1].length === 0
+    && gitApp.st.git.lanes[0][0]?.path === 'tracked.txt');
+  rmSync(repo, { recursive: true, force: true });
+  gitApp.clock.stop();
 }
 
 // ---- harness bridge: NDJSON drive ----

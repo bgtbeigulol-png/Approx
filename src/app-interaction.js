@@ -395,40 +395,58 @@ export const interactionMethods = {
     if (this.st.atBottom) this.scrollToBottom();
   },
 
+  toggleChangeset(message) {
+    if (!message || message.role !== 'system' || message.subtype !== 'changeset') return;
+    message.expanded = !message.expanded;
+    message.expandAnim ??= new Spring(message.expanded ? 1 : 0, { stiff: 18, damp: 0.86 });
+    message.expandAnim.set(message.expanded ? 1 : 0, this.st.reduceMotion);
+    message._lines = null;
+    message._layoutMode = -1;
+    this.st.toolFocus = message;
+    this.toast(`file changes ${message.expanded ? 'expanded' : 'folded'}`, 'info');
+    if (this.st.atBottom) this.scrollToBottom();
+  },
+
   toggleFocusedTool() {
     let tool = null;
     let group = null;
     let workgroup = null;
+    let changeset = null;
     if (this.st.toolFocus != null) {
-      ({ tool, group, workgroup } = findFocusedTool(this.st.msgs, this.st.toolFocus));
-      if (!tool && !group) {
+      ({ tool, group, workgroup, changeset } = findFocusedTool(this.st.msgs, this.st.toolFocus));
+      if (!tool && !group && !workgroup && !changeset) {
         workgroup = this.st.msgs.find((message) => message.role === 'workgroup'
           && (message === this.st.toolFocus || message.callId === this.st.toolFocus));
       }
     }
-    if (!tool && !group) {
+    if (!tool && !group && !workgroup && !changeset) {
       const viewport = this.viewport();
       const viewTop = Math.round(this.st.scroll);
       const viewBottom = viewTop + viewport.h;
       let docY = 0;
       for (const message of this.st.msgs) {
         const height = msgHeight(message, this.bodyWidth());
-        if ((message.role === 'tool' || message.role === 'toolgroup' || message.role === 'workgroup')
+        if ((message.role === 'tool' || message.role === 'toolgroup' || message.role === 'workgroup'
+          || (message.role === 'system' && message.subtype === 'changeset'))
           && docY < viewBottom && docY + height > viewTop) {
           if (message.role === 'workgroup') workgroup = message;
           else if (message.role === 'toolgroup') group = message;
+          else if (message.subtype === 'changeset') changeset = message;
           else tool = message;
         }
         docY += height;
       }
     }
-    if (!tool && !group) {
+    if (!tool && !group && !workgroup && !changeset) {
       const target = [...this.st.msgs].reverse()
-        .find((message) => message.role === 'tool' || message.role === 'toolgroup' || message.role === 'workgroup');
+        .find((message) => message.role === 'tool' || message.role === 'toolgroup' || message.role === 'workgroup'
+          || (message.role === 'system' && message.subtype === 'changeset'));
       if (target?.role === 'workgroup') workgroup = target;
       else if (target?.role === 'toolgroup') group = target;
+      else if (target?.subtype === 'changeset') changeset = target;
       else tool = target;
     }
+    if (changeset) return this.toggleChangeset(changeset);
     if (workgroup && !workgroup.expanded) return this.toggleWorkGroup(workgroup);
     if (workgroup && !tool && !group) return this.toggleWorkGroup(workgroup);
     if (!tool && !group) return this.toast('no tool call to expand', 'warn');
@@ -491,6 +509,10 @@ export const interactionMethods = {
 
 function findFocusedTool(messages, focus) {
   for (const message of messages) {
+    if (message.role === 'system' && message.subtype === 'changeset'
+      && (message === focus || message.callId === focus)) {
+      return { tool: null, group: null, workgroup: null, changeset: message };
+    }
     if (message.role === 'tool' && (message === focus || message.callId === focus)) {
       return { tool: message, group: null, workgroup: null };
     }
@@ -508,7 +530,7 @@ function findFocusedTool(messages, focus) {
       }
     }
   }
-  return { tool: null, group: null, workgroup: null };
+  return { tool: null, group: null, workgroup: null, changeset: null };
 }
 
 function collectMutations(messages) {

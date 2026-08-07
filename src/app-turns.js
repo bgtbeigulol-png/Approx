@@ -58,6 +58,8 @@ export const turnMethods = {
       interrupted: false,
       failed: false,
       releasing: false,
+      mutations: [],
+      mutationCallIds: [],
     };
     this._activeTurn = turn;
     const landed = push ? this.push({ role: 'user', text: raw, _awaitEntry: !!this.backend }) : userMessage;

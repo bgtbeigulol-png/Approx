@@ -129,6 +129,7 @@ export const queueMethods = {
     // promise and the runtime boundary both land prevents a phase-level
     // settled event from freezing only the first slice of tool activity.
     this.archiveCompletedWork();
+    this.appendTurnFileChanges(turn);
     this._activeTurn = null;
     this.st.busy = false;
     this.st.elapsed = 0;

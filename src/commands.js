@@ -13,6 +13,7 @@ export function buildCommands(app) {
     { name: 'compact', desc: 'Compact context now', key: '', run: (arg) => app.compactContext(arg) },
     { name: 'tool', desc: 'Simulate a tool call', key: '', run: () => app.fakeTool() },
     { name: 'settings', desc: 'Open the settings page', key: '^o', run: () => app.openSettings() },
+    { name: 'git', desc: 'Open the Git workbench', key: '^k', palette: true, run: () => app.openGit() },
     { name: 'history', desc: 'Return to a saved conversation', key: '^s', palette: true, run: () => app.openSessions() },
     { name: 'jump', desc: 'Quick-jump to a message', key: '^g', palette: true, run: () => app.openJump() },
     { name: 'theme', desc: 'Cycle accent color', key: '^t', palette: true, run: () => app.cycleAccent() },

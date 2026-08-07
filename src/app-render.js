@@ -8,6 +8,7 @@ import { drawCompact } from './ui/compact.js';
 import { drawComposer, drawRewindConfirm } from './ui/composer.js';
 import { drawDirectories } from './ui/directories.js';
 import { drawHeader, HEADER_H } from './ui/header.js';
+import { drawGit } from './ui/git.js';
 import { drawJumpList } from './ui/jumplist.js';
 import { drawPalette } from './ui/palette.js';
 import { drawPlanPanel } from './ui/plan.js';
@@ -85,6 +86,7 @@ export const renderMethods = {
     st.compact.progress.step(dt);
     st.compact.pulse.step(dt);
     this.stepDirectoryPicker(dt);
+    this.stepGitAnimations(dt);
     this.stepPlanAnimations(dt);
     this.stepQuestionnaireAnimations(dt);
     for (const item of st.messageQueue) {
@@ -220,6 +222,7 @@ export const renderMethods = {
     if (st.sessionPicker.anim.v > 0.001) drawSessions(s, st, t);
     if (st.directoryPicker.anim.v > 0.001) drawDirectories(s, st, t);
     if (st.compact.enter.v > 0.001) drawCompact(s, st, t);
+    if (st.git.anim.v > 0.001) drawGit(s, st, t);
     if (st.questionnaire.anim.v > 0.001) drawQuestionnaire(s, st, t);
   },
 
@@ -252,6 +255,7 @@ export const renderMethods = {
 };
 
 function animatedToolNodes(message) {
+  if (message.role === 'system' && message.subtype === 'changeset') return [message];
   if (message.role === 'tool') return [message];
   if (message.role === 'toolgroup') return [message, ...(message.tools ?? [])];
   if (message.role === 'workgroup') {

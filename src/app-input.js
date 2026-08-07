@@ -35,6 +35,8 @@ export const inputMethods = {
       return this.questionnaireKey(k);
     }
 
+    if (this.st.view === 'git') return this.gitKey(k);
+
     if (this.st.directoryPicker?.open) return this.directoryKey(k);
     // Slash suggestions are the active prompt layer. Let them consume keyboard
     // navigation before a focused Plan panel sees the same arrows/Enter.
@@ -90,6 +92,8 @@ export const inputMethods = {
         if (hit.line?.kind === 'toolchildhead') return this.toggleTool(hit.line.tool);
         if (hit.line?.kind === 'workgrouphead' || hit.offset === 1) return this.toggleWorkGroup(hit.msg);
       }
+      if (hit?.msg.role === 'system' && hit.msg.subtype === 'changeset'
+        && (hit.line?.kind === 'changesethead' || hit.offset === 1)) return this.toggleChangeset(hit.msg);
       this.beginPointer(k.x, k.y, hit);
       if (hit?.msg.role === 'user') this.pressUserMessage(hit.msg);
       return;
@@ -105,6 +109,7 @@ export const inputMethods = {
     if (this.st.palette) return this.paletteKey(k);
 
     if (k.ctrl && k.name === 'p') return this.openPalette();
+    if (k.ctrl && k.name === 'k') return this.openGit();
     if (k.ctrl && k.name === 'o') return this.openSettings();
     if (k.ctrl && k.name === 'g') return this.openJump();
     if (k.ctrl && k.name === 's') return this.openSessions();
