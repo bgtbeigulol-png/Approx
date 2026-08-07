@@ -1,18 +1,14 @@
-# Approx
+# <img src="assets/approx-icon.png" alt="" width="36" height="36"> Approx
 
 简体中文 | [English](README.md)
-
-<p align="center">
-  <img src="assets/approx-icon.png" alt="Approx 图标" width="96">
-</p>
-
-<p align="center">
-  <img src="assets/approx-banner.jpg" alt="Approx 项目横幅">
-</p>
 
 Approx 是一个运行在终端里的编程智能体工作区，由
 [Pi](https://github.com/earendil-works/pi) 驱动。你可以在这里聊天、制定计划、
 查看文件变更，并处理项目的 Git 操作。
+
+<p align="center">
+  <img src="assets/approx-banner.jpg" alt="Approx CLI 项目横幅" width="800">
+</p>
 
 当前版本是早期 beta，正式验证环境为 Windows Terminal 与 PowerShell 7。
 
