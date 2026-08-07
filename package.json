@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Approx — a brutalist coding-agent TUI on condensed-milk paper",
   "bin": {
-    "approx": "./bin/approx.js"
+    "approx": "bin/approx.js"
   },
   "files": [
     "bin/",
