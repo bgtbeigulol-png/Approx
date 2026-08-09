@@ -6,8 +6,13 @@ const MAX_DIFF_LINES = 900;
 /** Merge repeated Write/Edit mutations from one turn into one final file view. */
 export function buildFileChanges(mutations, cwd = process.cwd()) {
   const merged = new Map();
+  const historic = new Map();
   for (const mutation of mutations ?? []) {
-    if (!mutation?.path || !mutation.before || !mutation.after) continue;
+    if (!mutation?.path) continue;
+    if (!mutation.before || !mutation.after) {
+      if (Array.isArray(mutation.diff)) mergeHistoricChange(historic, mutation, cwd);
+      continue;
+    }
     const path = String(mutation.path);
     const prior = merged.get(path);
     if (prior) prior.after = mutation.after;
@@ -34,6 +39,11 @@ export function buildFileChanges(mutations, cwd = process.cwd()) {
       binary: false,
       diff: contentDiff(displayPath, before.text, after.text),
     });
+  }
+  for (const item of historic.values()) {
+    const exact = files.find((file) => file.path === item.path);
+    if (exact) continue;
+    files.push(item);
   }
   return files;
 }
@@ -130,6 +140,38 @@ function displayFilePath(cwd, path) {
   const local = relative(String(cwd || process.cwd()), path);
   const shown = local && !local.startsWith('..') ? local : path;
   return String(shown).replace(/\\/g, '/');
+}
+
+function mergeHistoricChange(changes, source, cwd) {
+  const path = String(source.path);
+  const next = {
+    path,
+    displayPath: displayFilePath(cwd, path),
+    kind: ['added', 'deleted', 'modified'].includes(source.kind) ? source.kind : 'modified',
+    added: Math.max(0, Number(source.added) || 0),
+    removed: Math.max(0, Number(source.removed) || 0),
+    binary: !!source.binary,
+    diff: (source.diff ?? []).map((line) => ({ ...line })),
+  };
+  const prior = changes.get(path);
+  if (!prior) {
+    changes.set(path, next);
+    return;
+  }
+  prior.added += next.added;
+  prior.removed += next.removed;
+  prior.binary ||= next.binary;
+  prior.kind = combinedKind(prior.kind, next.kind);
+  if (prior.diff.length && next.diff.length) {
+    prior.diff.push({ kind: 'meta', text: '... later edit ...', oldLine: null, newLine: null });
+  }
+  prior.diff.push(...next.diff);
+}
+
+function combinedKind(first, last) {
+  if (first === 'added' && last !== 'deleted') return 'added';
+  if (last === 'deleted') return 'deleted';
+  return 'modified';
 }
 
 function countLines(value) {

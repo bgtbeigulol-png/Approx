@@ -3,7 +3,7 @@ import { copyToClipboard } from './ansi.js';
 import { selectionRanges } from './app-geometry.js';
 import { setComposerInput } from './composer-state.js';
 import { toolMessages } from './message-tree.js';
-import { T, mix } from './theme.js';
+import { approdeWidth } from './ui/approde.js';
 import { composerHeight } from './ui/composer.js';
 import { HEADER_H } from './ui/header.js';
 import { planHeight } from './ui/plan.js';
@@ -14,8 +14,13 @@ import { totalHeight, msgHeight, visibleLines } from './ui/transcript.js';
 
 /** Viewport, selection, rewind/redo, tool folding, and navigation-rail interaction. */
 export const interactionMethods = {
+  /** Columns the docked approde drawer currently steals from the body. */
+  approdeGutter() {
+    return approdeWidth(this.st.approde, this.s.w);
+  },
+
   bodyWidth() {
-    return Math.max(24, this.s.w - RAIL_W - 3);
+    return Math.max(24, this.s.w - RAIL_W - 3 - this.approdeGutter());
   },
 
   viewport() {
@@ -142,16 +147,14 @@ export const interactionMethods = {
     const viewport = this.viewport();
     const ranges = selectionRanges(selection, viewport);
     const lines = [];
-    const grainFg = mix(T.bg, T.sand, 0.11);
     for (const range of ranges) {
       let line = '';
       const first = range.y * this.s.w + range.x1;
-      if (this.s.ch[first] === '' && range.x1 > viewport.x) line += this.s.ch[first - 1] || '';
+      if (this.s.copyCh[first] === '' && range.x1 > viewport.x) line += this.s.copyCh[first - 1] || '';
       for (let x = range.x1; x <= range.x2; x++) {
         const index = range.y * this.s.w + x;
-        const character = this.s.ch[index];
-        if (character === '·' && this.s.fg[index] === grainFg && this.s.bg[index] === T.bg) line += ' ';
-        else if (character) line += character;
+        const character = this.s.copyCh[index];
+        if (character) line += character;
       }
       lines.push(line.replace(/\s+$/u, ''));
     }
@@ -211,7 +214,8 @@ export const interactionMethods = {
     message._selectAnim.set(1, this.st.reduceMotion);
     setComposerInput(this.st, message.text);
     this.st.slashMatches = [];
-    this.st.slashAnim.set(0);
+    this.closeFileMention?.();
+    this.syncComposerSuggestionAnimation?.();
     this.st.focusAnim.set(1);
     this.toast('editing user message · enter to retry', 'info');
   },
@@ -408,45 +412,61 @@ export const interactionMethods = {
     if (this.st.atBottom) this.scrollToBottom();
   },
 
+  toggleFileEditGroup(group) {
+    if (!group || group.role !== 'fileeditgroup') return;
+    group.expanded = !group.expanded;
+    group.expandAnim ??= new Spring(group.expanded ? 1 : 0, { stiff: 18, damp: 0.86 });
+    group.expandAnim.set(group.expanded ? 1 : 0, this.st.reduceMotion);
+    group._lines = null;
+    group._layoutMode = -1;
+    this.st.toolFocus = group;
+    this.toast(`file edit ${group.expanded ? 'expanded' : 'folded'}`, 'info');
+    if (this.st.atBottom) this.scrollToBottom();
+  },
+
   toggleFocusedTool() {
     let tool = null;
     let group = null;
     let workgroup = null;
     let changeset = null;
+    let fileEdit = null;
     if (this.st.toolFocus != null) {
-      ({ tool, group, workgroup, changeset } = findFocusedTool(this.st.msgs, this.st.toolFocus));
-      if (!tool && !group && !workgroup && !changeset) {
+      ({ tool, group, workgroup, changeset, fileEdit } = findFocusedTool(this.st.msgs, this.st.toolFocus));
+      if (!tool && !group && !workgroup && !changeset && !fileEdit) {
         workgroup = this.st.msgs.find((message) => message.role === 'workgroup'
           && (message === this.st.toolFocus || message.callId === this.st.toolFocus));
       }
     }
-    if (!tool && !group && !workgroup && !changeset) {
+    if (!tool && !group && !workgroup && !changeset && !fileEdit) {
       const viewport = this.viewport();
       const viewTop = Math.round(this.st.scroll);
       const viewBottom = viewTop + viewport.h;
       let docY = 0;
       for (const message of this.st.msgs) {
         const height = msgHeight(message, this.bodyWidth());
-        if ((message.role === 'tool' || message.role === 'toolgroup' || message.role === 'workgroup'
+        if ((message.role === 'tool' || message.role === 'toolgroup' || message.role === 'fileeditgroup' || message.role === 'workgroup'
           || (message.role === 'system' && message.subtype === 'changeset'))
           && docY < viewBottom && docY + height > viewTop) {
           if (message.role === 'workgroup') workgroup = message;
           else if (message.role === 'toolgroup') group = message;
+          else if (message.role === 'fileeditgroup') fileEdit = message;
           else if (message.subtype === 'changeset') changeset = message;
           else tool = message;
         }
         docY += height;
       }
     }
-    if (!tool && !group && !workgroup && !changeset) {
+    if (!tool && !group && !workgroup && !changeset && !fileEdit) {
       const target = [...this.st.msgs].reverse()
-        .find((message) => message.role === 'tool' || message.role === 'toolgroup' || message.role === 'workgroup'
+        .find((message) => message.role === 'tool' || message.role === 'toolgroup' || message.role === 'fileeditgroup' || message.role === 'workgroup'
           || (message.role === 'system' && message.subtype === 'changeset'));
       if (target?.role === 'workgroup') workgroup = target;
       else if (target?.role === 'toolgroup') group = target;
+      else if (target?.role === 'fileeditgroup') fileEdit = target;
       else if (target?.subtype === 'changeset') changeset = target;
       else tool = target;
     }
+    if (fileEdit) return this.toggleFileEditGroup(fileEdit);
     if (changeset) return this.toggleChangeset(changeset);
     if (workgroup && !workgroup.expanded) return this.toggleWorkGroup(workgroup);
     if (workgroup && !tool && !group) return this.toggleWorkGroup(workgroup);
@@ -524,6 +544,11 @@ function findFocusedTool(messages, focus) {
     }
     if (message.role === 'workgroup') {
       if (message === focus || message.callId === focus) return { tool: null, group: null, workgroup: message };
+      if (message.fileEdits === focus || message.fileEdits?.callId === focus) {
+        return { tool: null, group: null, workgroup: message, fileEdit: message.fileEdits };
+      }
+      const editTool = message.fileEdits?.tools?.find((item) => item === focus || item.callId === focus);
+      if (editTool) return { tool: editTool, group: message.fileEdits, workgroup: message, fileEdit: message.fileEdits };
       for (const group of message.tools ?? []) {
         if (group === focus || group.callId === focus) return { tool: null, group, workgroup: message };
         const tool = group.tools?.find((item) => item === focus || item.callId === focus);
@@ -531,7 +556,7 @@ function findFocusedTool(messages, focus) {
       }
     }
   }
-  return { tool: null, group: null, workgroup: null, changeset: null };
+  return { tool: null, group: null, workgroup: null, changeset: null, fileEdit: null };
 }
 
 function collectMutations(messages) {
@@ -542,7 +567,7 @@ function collectMutationCallIds(messages) {
   const ids = [];
   const take = (tool) => {
     const name = String(tool?.name ?? '').toLowerCase();
-    if ((name === 'write' || name === 'edit') && tool.callId) ids.push(String(tool.callId));
+    if ((name === 'write' || name === 'edit' || name === 'apply_patch') && tool.callId) ids.push(String(tool.callId));
   };
   for (const tool of toolMessages(messages)) take(tool);
   return ids;

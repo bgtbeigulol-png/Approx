@@ -1,6 +1,6 @@
 {
   "name": "@bgtbeigulol-png/approx",
-  "version": "0.1.0-beta.1-f1",
+  "version": "0.1.0",
   "type": "module",
   "description": "Approx — a brutalist coding-agent TUI on condensed-milk paper",
   "bin": {
@@ -21,7 +21,9 @@
     "auth": "pi",
     "scripted": "node bin/approx.js --scripted",
     "smoke": "node scripts/smoke.js",
-    "test": "npm run smoke && node scripts/pi-plan-revision.test.js"
+    "test:update": "node scripts/updater-workflow.test.js",
+    "test:pi-backend": "node scripts/pi-backend-modules.test.js && node scripts/pi-plan-revision.test.js",
+    "test": "npm run test:update && npm run smoke && npm run test:pi-backend"
   },
   "engines": {
     "node": ">=22.19"

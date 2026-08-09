@@ -16,14 +16,6 @@ Approx owns both the terminal experience and its live agent session.
 The scripted mode remains available for renderer development. Everything renders
 through a diffing cell compositor, so animation costs only changed cells.`;
 
-export const ABOUT = `# Approx
-A brutalist terminal interface on condensed-milk paper.
-
-Heavy rules, hard shadows, one hot accent. Sub-cell bars and eighth-block
-ramps do the smooth work; the frames stay blunt on purpose.
-
-Models, tools, context, and sessions stay behind the Approx interface.`;
-
 export const SAMPLE_ANSWER = `Here is the shape of it.
 
 The compositor keeps two parallel cell buffers and writes only the runs that
@@ -43,14 +35,6 @@ for (const cell of frame) {
 
 The animation layer is springs and easings over wall-clock delta, not frame
 counts, so a stalled render never desynchronizes the motion.`;
-
-export const STATS_TEMPLATE = (st) => `# Session
-- turns: ${st.turns}
-- messages: ${st.msgs.length}
-- frames: ${st.frames}
-- avg dirty cells: ${st.avgDirty}
-- uptime: ${st.uptime}s
-- terminal: ${st.w}×${st.h}`;
 
 export const GREETING = `Approx is up. This is a shell, not a model: the interface is
 live, the answers are scripted.

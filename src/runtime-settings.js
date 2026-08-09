@@ -6,8 +6,10 @@ import {
   ACCENTS as ACCENT_DEFS,
   formatCompactTokens,
 } from './settings.js';
+import { serializeApprodeState } from './approde.js';
 import { savePreferences } from './persistence.js';
 import { invalidateLayoutTree } from './ui/transcript.js';
+import { serializeUsageHistory } from './usage-history.js';
 
 const ACCENTS = ACCENT_DEFS.map((a) => a.color);
 
@@ -188,6 +190,8 @@ export const runtimeSettingMethods = {
       autoCompactPercent: this.st.autoCompactPercent,
       autoCompactTokens: this.st.autoCompactTokens,
       effort: this.st.pendingEffort || this.st.effort,
+      usageHistory: serializeUsageHistory(this.st.usageHistory),
+      approde: serializeApprodeState(this.st.approde),
       ...(current ? { model: { provider: current.provider, id: current.id } } : {}),
       ...(this.st.sessionFile ? { lastSession: this.st.sessionFile } : {}),
     };
@@ -238,7 +242,7 @@ export const runtimeSettingMethods = {
   },
 
   commandEffort(arg) {
-    if (!arg) return this.cycleEffort();
+    if (!arg) return this.openEffortPicker();
     const effort = this.st.effortOptions.find((item) => item.toLowerCase() === String(arg).toLowerCase());
     if (!effort) return this.toast(`unknown effort: ${arg}`, 'warn');
     this.setEffort(effort);

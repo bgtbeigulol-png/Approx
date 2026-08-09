@@ -50,6 +50,14 @@ const QuestionnaireParams = Type.Object({
   questions: Type.Array(QuestionParams, { minItems: 1, maxItems: 5 }),
 });
 
+const ApprodeParams = Type.Object({
+  reason: Type.String({ description: 'Plain-language reason this change to the active skill/prompt set helps the current task.' }),
+  enableSkills: Type.Optional(Type.Array(Type.String(), { description: 'Skill names to turn on.' })),
+  disableSkills: Type.Optional(Type.Array(Type.String(), { description: 'Skill names to turn off.' })),
+  enablePrompts: Type.Optional(Type.Array(Type.String(), { description: 'Prompt names to turn on.' })),
+  disablePrompts: Type.Optional(Type.Array(Type.String(), { description: 'Prompt names to turn off.' })),
+});
+
 function textResult(text, details = {}) {
   return { content: [{ type: 'text', text }], details };
 }
@@ -76,12 +84,12 @@ export function createApproxHostTools(host) {
       name: 'update_plan',
       label: 'Approx Plan',
       description: 'Create and maintain the persistent execution plan, todo progress, and hidden working notes shown by Approx.',
-      promptSnippet: 'update_plan: propose plans and keep persistent todos/notes accurate.',
+      promptSnippet: 'update_plan: propose plans, keep todos accurate, and store concise private continuity in notes.',
       promptGuidelines: [
         'In Plan mode, explore intent and possibilities, then call update_plan action="propose" with intent, approach, todos, and notes.',
         'After proposing, stop execution and wait for user approval.',
         'During Go work, update todo status at the moment work starts or completes; replace stale todos when reality changes.',
-        'Use set_notes for constraints that should survive later turns but stay hidden from the user-facing todo strip.',
+        'Use set_notes for concise constraints, decisions, and continuity that should survive later turns but stay hidden from the user-facing todo strip; do not put user-visible progress narration there.',
         'Call finish only after every required todo is completed.',
       ],
       parameters: PlanParams,
@@ -109,5 +117,59 @@ export function createApproxHostTools(host) {
         return textResult(lines.join('\n') || 'Question list submitted with no answers.', result);
       },
     },
+    {
+      name: 'manage_approde',
+      label: 'Manage Approde',
+      description: 'Request a change to the hot-swappable active set of skills and prompts. Requires explicit user approval before it takes effect. Use sparingly, only when the current task clearly needs a capability that is off, or when an active one is getting in the way.',
+      promptSnippet: 'manage_approde: request user-approved enable/disable of skills and prompts.',
+      promptGuidelines: [
+        'Only request changes that materially help the current task; never toggle capabilities speculatively.',
+        'Always give a concrete reason; the user sees it in the approval prompt.',
+        'A disabled skill or prompt is genuinely unavailable — request it back on before relying on it.',
+      ],
+      parameters: ApprodeParams,
+      executionMode: 'sequential',
+      async execute(toolCallId, params, signal) {
+        const changes = summarizeApprodeChanges(params);
+        if (!changes.length) return textResult('No approde changes were specified.', { applied: false });
+        const question = {
+          id: 'approde-approval',
+          label: 'Approde change',
+          prompt: `The assistant wants to change the active set:\n${changes.map((c) => `  • ${c}`).join('\n')}\n\nReason: ${params.reason || '(none given)'}\n\nApprove this change?`,
+          type: 'single',
+          options: [
+            { value: 'approve', label: 'Approve', description: 'Apply the change and continue.' },
+            { value: 'reject', label: 'Reject', description: 'Keep the current set.' },
+          ],
+          required: true,
+        };
+        const result = await host.requestQuestions(toolCallId, [question], signal, {
+          title: 'APPRODE CHANGE REQUEST',
+          intro: 'The assistant is asking to hot-swap the active skills/prompts.',
+        });
+        if (result.cancelled) return textResult('Approde change cancelled.', { applied: false, ...result });
+        const answer = result.answers?.[0]?.value;
+        const decision = Array.isArray(answer) ? answer[0] : answer;
+        if (decision !== 'approve') {
+          return textResult('User rejected the approde change; the active set is unchanged.', { applied: false });
+        }
+        const state = await host.applyApprodeFromModel({
+          enableSkills: params.enableSkills ?? [],
+          disableSkills: params.disableSkills ?? [],
+          enablePrompts: params.enablePrompts ?? [],
+          disablePrompts: params.disablePrompts ?? [],
+        });
+        return textResult(`Approde updated and system prompt rebuilt. ${changes.join('; ')}.`, { applied: true, state });
+      },
+    },
   ];
+}
+
+function summarizeApprodeChanges(params = {}) {
+  const out = [];
+  for (const name of params.enableSkills ?? []) out.push(`enable skill "${name}"`);
+  for (const name of params.disableSkills ?? []) out.push(`disable skill "${name}"`);
+  for (const name of params.enablePrompts ?? []) out.push(`enable prompt "${name}"`);
+  for (const name of params.disablePrompts ?? []) out.push(`disable prompt "${name}"`);
+  return out;
 }

@@ -4,11 +4,15 @@ import {
 } from './compact-settings.js';
 import { createCompactState } from './compact-state.js';
 import { createDirectoryPickerState, formatWorkingDirectory } from './directories.js';
+import { createEffortPickerState } from './effort-picker.js';
+import { createFileMentionState } from './file-mentions.js';
+import { createApprodeState } from './approde.js';
 import { createGitState } from './git.js';
 import { createPlanState } from './plan.js';
 import { createQuestionnaireState } from './questionnaire.js';
 import { createSessionPickerState } from './sessions.js';
 import { ACCENTS as ACCENT_DEFS } from './settings.js';
+import { createUsageHistory } from './usage-history.js';
 
 export const APP_ACCENTS = ACCENT_DEFS.map((accent) => accent.color);
 
@@ -71,10 +75,26 @@ export function createAppState({ noSplash = false, backend = null, preferences =
     slashIndex: 0,
     slashScroll: 0,
     slashAnim: new Spring(0, { stiff: 18, damp: 0.85 }),
+    fileMention: createFileMentionState(),
     settingsAnim: new Spring(0, { stiff: 18, damp: 0.86 }),
     settingsIndex: 0,
     settingsCursor: new Spring(0, { stiff: 20, damp: 0.9 }),
     settingsFlash: new Spring(0, { stiff: 10, damp: 1 }),
+    status: {
+      open: false,
+      page: 0,
+      hits: [],
+      anim: new Spring(0, { stiff: 18, damp: 0.86 }),
+      pulse: new Spring(0, { stiff: 14, damp: 0.82 }),
+    },
+    usageHistory: createUsageHistory(pref.usageHistory),
+    conversationUsage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+    update: {
+      checking: false,
+      updating: false,
+      checkedAt: 0,
+      info: null,
+    },
     toolFocus: null,
     jump: false,
     jumpAnim: new Spring(0, { stiff: 18, damp: 0.84 }),
@@ -121,5 +141,7 @@ export function createAppState({ noSplash = false, backend = null, preferences =
     git: createGitState(),
     plan: createPlanState(),
     questionnaire: createQuestionnaireState(),
+    effortPicker: createEffortPickerState(),
+    approde: createApprodeState(pref.approde),
   };
 }

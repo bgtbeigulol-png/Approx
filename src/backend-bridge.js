@@ -86,7 +86,7 @@ export const backendBridgeMethods = {
       expandAnim: new Spring(0, { stiff: 18, damp: 0.86 }),
     });
     this.liveTools.set(id, tool);
-    const mutationTool = /^(write|edit)$/i.test(tool.name);
+    const mutationTool = /^(write|edit|apply_patch)$/i.test(tool.name);
     const mutationCallIds = this._activeTurn ? (this._activeTurn.mutationCallIds ??= []) : [];
     if (mutationTool && this._activeTurn && !mutationCallIds.includes(id)) {
       mutationCallIds.push(id);
@@ -139,6 +139,7 @@ export const backendBridgeMethods = {
       if (this._activeTurn) this._activeTurn.mutations.push(event.mutation);
       else this._detachedMutations.push(event.mutation);
     }
+    this.refreshFileEditGroup(tool);
     tool._lines = null;
     tool._lw = -1;
     invalidateLayoutTree(this.st.msgs);
@@ -161,6 +162,7 @@ export const backendBridgeMethods = {
       this.push(msg);
     }
     this.archiveCompletedWork();
+    this.restoreHistoricChangesets();
     this.st.history = this.st.msgs.filter((msg) => msg.role === 'user').map((msg) => msg.text);
     this.st.histIdx = -1;
     this.st.turns = this.st.history.length;
@@ -191,6 +193,19 @@ export const backendBridgeMethods = {
         if (Number.isFinite(event.model?.contextWindow)) this.st.contextWindow = event.model.contextWindow;
         if (event.plan) this.applyPlanState(event.plan, { pulse: false });
         this.restoreRuntimePreferences();
+        // A newly started backend reports an empty filter. Preserve any saved
+        // local selection long enough to push it down; when there is no saved
+        // selection, an injected backend's existing state remains authoritative.
+        const hasSavedApprode = !!this.st.approde?.activePreset
+          || !!this.st.approde?.disabledSkills?.size
+          || !!this.st.approde?.disabledPrompts?.size;
+        if (event.approde) {
+          this.hydrateApprodeCatalog(
+            event.approde.catalog ?? {},
+            hasSavedApprode ? null : (event.approde.state ?? null),
+          );
+        }
+        if (hasSavedApprode) void this.resumeLastApprode();
         this.persistPreferences();
         break;
       case 'setup_required':
@@ -209,6 +224,13 @@ export const backendBridgeMethods = {
         break;
       case 'questionnaire':
         if (event.request) void this.openQuestionnaire(event.request);
+        break;
+      case 'approde':
+        this.applyApprodeEvent(event);
+        if (event.reason === 'model') {
+          this.toast(`Approde changed by model${event.state?.activePreset ? ` · ${event.state.activePreset}` : ''}`, 'ok');
+        }
+        this.persistPreferences();
         break;
       case 'workspace_changed': {
         this.resetTranscriptView();
@@ -302,6 +324,7 @@ export const backendBridgeMethods = {
         break;
       }
       case 'usage': {
+        this.recordUsageEvent(event);
         const tokens = Number(event.outputTokens);
         if (Number.isFinite(tokens) && tokens >= 0 && this.st.elapsed > 0) {
           this.st.tpsNow = tokens / this.st.elapsed;
@@ -326,6 +349,7 @@ export const backendBridgeMethods = {
         this.st.sessionId = event.sessionId || this.st.sessionId;
         this.st.ctxTokens = 0;
         this.st.ctxUse.set(0, true);
+        this.st.conversationUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
         this.st.busy = false;
         this.toast('context cleared', 'ok');
         void this.applyPendingRuntimeChanges().finally(() => this.drainMessageQueue());
@@ -335,6 +359,7 @@ export const backendBridgeMethods = {
         this.st.sessionFile = event.sessionFile || this.st.sessionFile;
         this.st.ctxTokens = 0;
         this.st.ctxUse.set(0, true);
+        this.st.conversationUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
         this.st.busy = false;
         this.toast('new conversation ready', 'ok');
         break;

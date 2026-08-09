@@ -1,13 +1,14 @@
 // Scrolling transcript. Each message enters with a slide + gutter-bar wipe;
 // the streaming message reveals character by character with a live caret.
 
-import { ATTR_BOLD, ATTR_DIM, ATTR_ITALIC, DEFAULT, strWidth } from '../ansi.js';
+import { ATTR_BOLD, ATTR_DIM, ATTR_ITALIC, ATTR_UNDER, DEFAULT, strWidth } from '../ansi.js';
 import { BLOCK, DASH, MARK, HEAVY, LIGHT, SPIN_BRAILLE } from '../glyphs.js';
 import { T, ROLE, mix } from '../theme.js';
 import { ease, clamp, norm } from '../anim.js';
 import { rule, vrule, panel, textReveal, bar } from '../draw.js';
 import { wrapText, ellipsize } from '../wrap.js';
 import { markdownLayout } from '../markdown.js';
+import { fileMentionSpans } from '../file-mention-highlight.js';
 
 const GUTTER = 3; // bar + gap
 
@@ -15,6 +16,7 @@ const GUTTER = 3; // bar + gap
 export function layout(msg, w) {
   if (msg.role === 'system' && msg.subtype === 'changeset') return changesetLayout(msg, w);
   if (msg.role === 'workgroup') return workGroupLayout(msg, w);
+  if (msg.role === 'fileeditgroup') return fileEditGroupLayout(msg, w);
   if (msg.role === 'toolgroup') return toolGroupLayout(msg, w);
   const markdown = msg.markdown !== false;
   if (msg._lw === w && msg._md === markdown && msg._lines) return msg._lines;
@@ -46,6 +48,7 @@ export function invalidateLayoutTree(messages) {
     msg._md = null;
     msg._layoutMode = -1;
     for (const note of msg.notes ?? []) visit(note);
+    if (msg.fileEdits) visit(msg.fileEdits);
     for (const group of msg.tools ?? []) visit(group);
   };
   for (const msg of messages ?? []) visit(msg);
@@ -64,8 +67,10 @@ export function visibleLines(msg, w) {
     const nested = [lines[0]];
     for (const line of lines.slice(1)) {
       nested.push(line);
-      if (line.kind !== 'worktoolhead') continue;
-      const children = visibleToolGroupChildren(line.group, w, true);
+      if (line.kind !== 'worktoolhead' && line.kind !== 'workfilehead') continue;
+      const children = line.kind === 'workfilehead'
+        ? visibleFileEditChildren(line.group, true)
+        : visibleToolGroupChildren(line.group, w, true);
       nested.push(...children);
     }
     const outerRows = Math.ceil(Math.max(0, nested.length - 1) * ease.outCubic(outerP));
@@ -75,6 +80,12 @@ export function visibleLines(msg, w) {
     const outerP = clamp(msg.expandAnim?.v ?? (msg.expanded ? 1 : 0), 0, 1);
     if (outerP <= 0.001) return lines.slice(0, 1);
     const nested = [lines[0], ...visibleToolGroupChildren(msg, w)];
+    const outerRows = Math.ceil(Math.max(0, nested.length - 1) * ease.outCubic(outerP));
+    return nested.slice(0, 1 + outerRows);
+  }
+  if (msg.role === 'fileeditgroup') {
+    const outerP = clamp(msg.expandAnim?.v ?? (msg.expanded ? 1 : 0), 0, 1);
+    const nested = [lines[0], ...visibleFileEditChildren(msg)];
     const outerRows = Math.ceil(Math.max(0, nested.length - 1) * ease.outCubic(outerP));
     return nested.slice(0, 1 + outerRows);
   }
@@ -147,6 +158,17 @@ function toolGroupLayout(group, w) {
   return lines;
 }
 
+function fileEditGroupLayout(group, w) {
+  const open = layoutMode(group) === 1;
+  if (group._lw === w && group._layoutMode === (open ? 1 : 0) && group._lines) return group._lines;
+  const lines = [{ kind: 'changesethead', text: group.title || 'File Edit', changeset: group }];
+  if (open) lines.push(...fileEditRows(group));
+  group._lines = lines;
+  group._lw = w;
+  group._layoutMode = open ? 1 : 0;
+  return lines;
+}
+
 function workGroupLayout(group, w) {
   const open = layoutMode(group) === 1;
   if (group._lw === w && group._layoutMode === (open ? 1 : 0) && group._lines) return group._lines;
@@ -166,6 +188,9 @@ function workGroupLayout(group, w) {
       lines.push({ kind: 'worknote', text: `${i === 0 ? 'Note · ' : '       '}${line}`, note });
     }
   }
+  if (group.fileEdits) {
+    lines.push({ kind: 'workfilehead', text: group.fileEdits.title || 'File Edit', group: group.fileEdits });
+  }
   for (const toolGroup of group.tools ?? []) {
     const title = String(toolGroup.title || '').trim();
     const label = /^tool calls\b/i.test(title) ? title : `Tool Calls${title ? ` · ${title}` : ''}`;
@@ -175,6 +200,31 @@ function workGroupLayout(group, w) {
   group._lw = w;
   group._layoutMode = 1;
   return lines;
+}
+
+function fileEditRows(group) {
+  const lines = [];
+  for (const file of group.files ?? []) {
+    lines.push({ kind: 'changefilehead', text: file.displayPath || file.path, file });
+    if (file.binary) {
+      lines.push({ kind: 'changediff', text: 'binary content changed', file,
+        diffKind: 'meta', oldLine: null, newLine: null });
+      continue;
+    }
+    for (const row of file.diff ?? []) {
+      lines.push({
+        kind: 'changediff', text: row.text, file, diffKind: row.kind,
+        oldLine: row.oldLine, newLine: row.newLine,
+      });
+    }
+  }
+  return lines;
+}
+
+function visibleFileEditChildren(group, nested = false) {
+  const rows = fileEditRows(group).map((line) => nested ? { ...line, workNested: true } : line);
+  const p = clamp(group.expandAnim?.v ?? (group.expanded ? 1 : 0), 0, 1);
+  return rows.slice(0, Math.ceil(rows.length * ease.outCubic(p)));
 }
 
 /** Keep collapsed groups to their one visible header line until they open. */
@@ -396,13 +446,15 @@ function drawMessage(s, msg, x, y, w, clip, t) {
         drawWorkGroupHead(s, bx, ry, bw, ln, fade, msg, t);
         break;
       case 'changesethead':
-        drawChangesetHead(s, bx, ry, bw, ln, fade, msg);
+        drawChangesetHead(s, bx, ry, bw, ln, fade, msg, t);
         break;
       case 'changefilehead':
-        drawChangeFileHead(s, bx, ry, bw, ln, fade);
+        drawChangeFileHead(s, bx + (ln.workNested ? 4 : 0), ry,
+          Math.max(1, bw - (ln.workNested ? 4 : 0)), ln, fade);
         break;
       case 'changediff':
-        drawChangeDiff(s, bx, ry, bw, ln, fade);
+        drawChangeDiff(s, bx + (ln.workNested ? 4 : 0), ry,
+          Math.max(1, bw - (ln.workNested ? 4 : 0)), ln, fade);
         break;
       case 'worknote':
         s.put(bx, ry, LIGHT.v, mix(T.bg, T.rule, fade * 0.75));
@@ -410,6 +462,9 @@ function drawMessage(s, msg, x, y, w, clip, t) {
         break;
       case 'worktoolhead':
         drawToolGroupHead(s, bx + 2, ry, Math.max(1, bw - 2), ln, fade, ln.group, t);
+        break;
+      case 'workfilehead':
+        drawChangesetHead(s, bx + 2, ry, Math.max(1, bw - 2), ln, fade, ln.group, t);
         break;
       case 'toolgrouphead':
         drawToolGroupHead(s, bx, ry, bw, ln, fade, msg, t);
@@ -429,6 +484,8 @@ function drawMessage(s, msg, x, y, w, clip, t) {
           const codeBg = mix(T.bg, T.panel, fade * 0.28);
           s.fillRect(bx, ry, bw, 1, ' ', T.fg, codeBg);
           s.text(bx + 1, ry, shown, mix(T.bg, T.ink, fade), codeBg, 0, bw - 2);
+        } else if (msg.role === 'user') {
+          drawUserLine(s, bx, ry, shown, fade, bw);
         } else {
           drawInline(s, bx, ry, ln, revealCols, fade, bw, T.fg);
         }
@@ -453,6 +510,20 @@ function drawMessage(s, msg, x, y, w, clip, t) {
       const col = mix(T.bg, T.accent, 0.18 + selected * 0.28);
       for (let i = x + GUTTER; i < x + w; i++) s.put(i, by, HEAVY.h, col);
     }
+  }
+}
+
+function drawUserLine(s, x, y, text, fade, maxW) {
+  let cx = x;
+  let room = maxW;
+  for (const span of fileMentionSpans(text)) {
+    if (room <= 0) break;
+    const marker = span.part === 'marker';
+    const fg = span.mention ? (marker ? T.mentionMark : T.mentionPath) : T.fg;
+    const attrs = span.mention ? (marker ? ATTR_BOLD : ATTR_UNDER) : 0;
+    const drawn = s.text(cx, y, span.text, mix(T.bg, fg, fade), DEFAULT, attrs, room);
+    cx += drawn;
+    room -= drawn;
   }
 }
 
@@ -488,8 +559,13 @@ function drawToolHead(s, x, y, w, ln, fade, msg, t) {
 function drawWorkGroupHead(s, x, y, w, ln, fade, group, t) {
   s.fillRect(x, y, w, 1, ' ', T.fg, T.bg);
   const tools = (group.tools ?? []).reduce((sum, item) => sum + (item.tools?.length ?? 0), 0);
+  const edits = group.fileEdits?.tools?.length ?? 0;
   const notes = group.notes?.length ?? 0;
-  const stat = `${notes} note${notes === 1 ? '' : 's'} · ${tools} tool${tools === 1 ? '' : 's'}`;
+  const stat = [
+    `${notes} note${notes === 1 ? '' : 's'}`,
+    edits ? `${edits} edit${edits === 1 ? '' : 's'}` : '',
+    `${tools} tool${tools === 1 ? '' : 's'}`,
+  ].filter(Boolean).join(' · ');
   const icon = group.expanded ? '▾' : '▸';
   s.put(x, y, icon, mix(T.bg, T.accent2, fade), DEFAULT, ATTR_BOLD);
   s.put(x + 2, y, group.expanded ? MARK.check : '·', mix(T.bg, group.expanded ? T.ok : T.accent, fade), DEFAULT, ATTR_BOLD);
@@ -499,12 +575,14 @@ function drawWorkGroupHead(s, x, y, w, ln, fade, group, t) {
   s.textRight(x + w - 1, y, stat, mix(T.bg, T.dim, fade), DEFAULT, ATTR_DIM);
 }
 
-function drawChangesetHead(s, x, y, w, ln, fade, message) {
+function drawChangesetHead(s, x, y, w, ln, fade, message, t = 0) {
   const summary = message.summary ?? { files: message.files?.length ?? 0, added: 0, removed: 0 };
-  const stat = `${summary.files} file${summary.files === 1 ? '' : 's'}  +${summary.added} -${summary.removed}`;
+  const running = message.tools?.some((tool) => tool.running);
+  const stat = running ? 'editing…' : `${summary.files} file${summary.files === 1 ? '' : 's'}  +${summary.added} -${summary.removed}`;
   s.fillRect(x, y, w, 1, ' ', T.fg, T.bg);
   s.put(x, y, message.expanded ? '▾' : '▸', mix(T.bg, T.accent2, fade), DEFAULT, ATTR_BOLD);
-  s.put(x + 2, y, MARK.diamond, mix(T.bg, T.plum, fade), DEFAULT, ATTR_BOLD);
+  s.put(x + 2, y, running ? SPIN_BRAILLE[Math.floor(t * 12) % SPIN_BRAILLE.length] : MARK.diamond,
+    mix(T.bg, running ? T.accent : T.plum, fade), DEFAULT, ATTR_BOLD);
   const room = Math.max(1, w - 5 - strWidth(stat));
   s.text(x + 4, y, ellipsize(ln.text, room), mix(T.bg, T.fg, fade), DEFAULT, ATTR_BOLD, room);
   if (w > strWidth(stat) + 6) {
@@ -606,8 +684,10 @@ function drawToolChildBody(s, x, y, w, ln, shown, fade) {
 
 function drawInline(s, x, y, ln, cols, fade, maxW, baseFg, baseBg = DEFAULT, baseAttrs = 0) {
   const runs = ln.runs?.length ? ln.runs : [{ text: ln.text, attrs: 0 }];
+  const mentions = fileMentionRanges(ln.text);
   let cx = x;
   let room = Math.max(0, Math.min(maxW, cols));
+  let offset = 0;
   for (const run of runs) {
     if (room <= 0) break;
     // A style-run boundary must never reuse the reserved tail of a CJK/fullwidth
@@ -621,19 +701,49 @@ function drawInline(s, x, y, ln, cols, fade, maxW, baseFg, baseBg = DEFAULT, bas
     }
     const text = sliceCols(run.text, room);
     if (!strWidth(text)) continue;
-    const fg = run.code ? T.accent2
+    const runFg = run.code ? T.accent2
       : run.tableBorder ? (run.tableStrong ? T.accent2 : T.rule)
         : run.link ? T.accent2 : run.strike ? T.dim : baseFg;
     // Inline code is differentiated by ink colour and weight, not a dark chip.
     // A full-width code background used to become a black rectangle when an
     // undefined inset colour reached the ANSI compositor.
     const bg = run.code ? (baseBg === DEFAULT ? T.bg : baseBg) : baseBg;
-    const attrs = baseAttrs | (run.attrs ?? 0) | (run.code ? ATTR_BOLD : 0) | (run.strike ? ATTR_DIM : 0);
-    const drawn = s.text(cx, y, text, mix(T.bg, fg, fade), bg, attrs, room);
-    cx += drawn;
-    room -= drawn;
+    for (const segment of fileMentionSegments(text, offset, mentions)) {
+      if (room <= 0) break;
+      const marker = segment.part === 'marker';
+      const fg = segment.part ? (marker ? T.mentionMark : T.mentionPath) : runFg;
+      const attrs = baseAttrs | (run.attrs ?? 0) | (run.code ? ATTR_BOLD : 0)
+        | (run.strike ? ATTR_DIM : 0) | (segment.part ? (marker ? ATTR_BOLD : ATTR_UNDER) : 0);
+      const drawn = s.text(cx, y, segment.text, mix(T.bg, fg, fade), bg, attrs, room);
+      cx += drawn;
+      room -= drawn;
+    }
+    offset += [...run.text].length;
   }
   return cx - x;
+}
+
+function fileMentionRanges(text) {
+  const ranges = [];
+  let offset = 0;
+  for (const span of fileMentionSpans(text)) {
+    const length = [...span.text].length;
+    if (span.part) ranges.push({ start: offset, end: offset + length, part: span.part });
+    offset += length;
+  }
+  return ranges;
+}
+
+function fileMentionSegments(text, start, ranges) {
+  const chars = [...text];
+  const parts = [];
+  for (let i = 0; i < chars.length; i++) {
+    const part = ranges.find((range) => start + i >= range.start && start + i < range.end)?.part ?? '';
+    const previous = parts.at(-1);
+    if (previous?.part === part) previous.text += chars[i];
+    else parts.push({ text: chars[i], part });
+  }
+  return parts;
 }
 
 /** Slice a string to at most n display columns. */

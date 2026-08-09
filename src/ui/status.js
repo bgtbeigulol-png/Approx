@@ -16,7 +16,7 @@ export function drawStatus(s, st, y, t) {
   // Explicit agent mode. Runtime activity has its own pulse beside this slab, so
   // Go/Plan never disappears while a request is running.
   const mode = st.plan?.mode === 'plan' ? 'PLAN' : 'GO';
-  const chipBg = mode === 'PLAN' ? T.accent : T.accent2;
+  const chipBg = T.accent;
   let x = 0;
   const chipW = strWidth(` ${mode} `);
   x += s.text(x, y, ` ${mode} `, T.bg, chipBg, ATTR_BOLD);

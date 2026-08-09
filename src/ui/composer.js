@@ -1,6 +1,6 @@
 // Input box. Grows with content, animates focus, sub-cell caret, slash-hint chip.
 
-import { ATTR_BOLD, ATTR_DIM, strWidth } from '../ansi.js';
+import { ATTR_BOLD, ATTR_DIM, ATTR_UNDER, strWidth } from '../ansi.js';
 import { BLOCK, MARK, HEAVY } from '../glyphs.js';
 import { T, mix } from '../theme.js';
 import { ease, clamp, norm } from '../anim.js';
@@ -8,10 +8,12 @@ import { panel, hint, shimmer } from '../draw.js';
 import { ellipsize } from '../wrap.js';
 import { layoutComposerInput, syncComposer } from '../composer-state.js';
 import { queueHeight } from './queue.js';
+import { fileMentionSpans } from '../file-mention-highlight.js';
 
 export const MAX_ROWS = 6;
 /** Visible rows in the floating slash-command menu. */
-export const SLASH_ROWS = 5;
+export const SUGGESTION_ROWS = 5;
+export const SLASH_ROWS = SUGGESTION_ROWS;
 
 /** Rows the composer needs for `text` at inner width `iw`. */
 export function composerRows(text, iw) {
@@ -33,9 +35,9 @@ export function drawComposer(s, st, x, y, w, t) {
   const h = rows + 2;
 
   const focus = st.focusAnim.v; // 0..1
-  const signal = st.plan?.mode === 'plan' ? T.accent : T.accent2;
+  const signal = T.accent;
   const border = mix(T.rule, signal, focus);
-  const bg = T.cream; // raised-panel tone, matching the palette / jump / slash frames
+  const bg = mix(T.cream, signal, st.plan?.mode === 'go' ? 0.075 : 0.045);
 
   panel(s, x, y, w, h, {
     bg,
@@ -55,7 +57,7 @@ export function drawComposer(s, st, x, y, w, t) {
   const start = clamp(inputLayout.cursorRow - rows + 1, 0, Math.max(0, lines.length - rows));
   for (let i = 0; i < rows; i++) {
     const ln = lines[start + i] ?? '';
-    s.text(x + 3, y + 1 + i, ln, T.fg, bg, 0, iw);
+    drawComposerText(s, x + 3, y + 1 + i, ln, bg, iw);
   }
 
   // A placeholder cannot coexist with terminal-managed preedit: the IME only
@@ -82,13 +84,28 @@ export function drawComposer(s, st, x, y, w, t) {
     }
   }
 
-  // slash-command hint chip floats above the box
-  if (st.input.startsWith('/') && st.slashMatches.length) {
+  // Prompt suggestions share one compact layer above the box.
+  if (composerSuggestionState(st)) {
     const lift = queueHeight(st);
-    drawSlashMenu(s, st, x, y - lift - (lift ? 1 : 0), w);
+    drawSuggestionMenu(s, st, x, y - lift - (lift ? 1 : 0), w);
   }
 
   return h;
+}
+
+function drawComposerText(s, x, y, text, bg, maxW) {
+  let cx = x;
+  let room = maxW;
+  for (const span of fileMentionSpans(text)) {
+    if (room <= 0) break;
+    const marker = span.part === 'marker';
+    const fg = span.mention ? (marker ? T.mentionMark : T.mentionPath) : T.fg;
+    const spanBg = span.mention ? mix(bg, T.mentionMark, 0.08) : bg;
+    const attrs = span.mention ? (marker ? ATTR_BOLD : ATTR_UNDER) : 0;
+    const drawn = s.text(cx, y, span.text, fg, spanBg, attrs, room);
+    cx += drawn;
+    room -= drawn;
+  }
 }
 
 /** Animated one-line confirmation card shown before a destructive branch rewind. */
@@ -124,11 +141,29 @@ export function drawRewindConfirm(s, st, x, y, w, t) {
   }
 }
 
-function drawSlashMenu(s, st, x, y, w) {
-  const n = st.slashMatches.length;
-  const rows = Math.min(SLASH_ROWS, n);
-  const scroll = clamp(st.slashScroll, 0, Math.max(0, n - rows));
-  const items = st.slashMatches.slice(scroll, scroll + rows);
+function composerSuggestionState(st) {
+  if (st.fileMention?.context && st.fileMention.matches.length) {
+    return {
+      label: 'FILES', items: st.fileMention.matches,
+      index: st.fileMention.index, scroll: st.fileMention.scroll,
+    };
+  }
+  if (st.input.startsWith('/') && st.slashMatches.length) {
+    return {
+      label: 'COMMANDS', items: st.slashMatches,
+      index: st.slashIndex, scroll: st.slashScroll,
+    };
+  }
+  return null;
+}
+
+function drawSuggestionMenu(s, st, x, y, w) {
+  const menu = composerSuggestionState(st);
+  if (!menu) return;
+  const n = menu.items.length;
+  const rows = Math.min(SUGGESTION_ROWS, n);
+  const scroll = clamp(menu.scroll, 0, Math.max(0, n - rows));
+  const items = menu.items.slice(scroll, scroll + rows);
   const mh = rows + 2;
   const my = y - mh;
   if (my < 3) return;
@@ -140,37 +175,37 @@ function drawSlashMenu(s, st, x, y, w) {
 
   panel(s, x, my, mw, mh, {
     bg: T.cream,
-    border: mix(T.rule, T.accent2, 0.5),
-    label: 'COMMANDS',
+    border: mix(T.rule, T.accent, 0.5),
+    label: menu.label,
     labelColor: T.slate,
     shadow: true,
   });
   // result count, padded so the top rule reads as continuous
   if (n > rows) {
-    const cnt = ` ${st.slashIndex + 1}/${n} `;
+    const cnt = ` ${menu.index + 1}/${n} `;
     s.text(x + mw - strWidth(cnt) - 2, my, cnt, mix(T.cream, T.dim, 1), T.cream, ATTR_DIM);
   }
 
   for (let i = 0; i < shown; i++) {
     const it = items[i];
     const idx = scroll + i;
-    const sel = idx === st.slashIndex;
+    const sel = idx === menu.index;
     const ry = my + 1 + i;
     if (sel) {
-      s.fillRect(x + 1, ry, mw - 2, 1, ' ', T.bg, T.accent2);
-      s.put(x + 1, ry, BLOCK.l4, T.accent, T.accent2);
+      s.fillRect(x + 1, ry, mw - 2, 1, ' ', T.bg, T.accent);
+      s.put(x + 1, ry, BLOCK.l4, T.bg, T.accent);
     }
     const fg = sel ? T.bg : T.fg;
-    const bg2 = sel ? T.accent2 : T.cream;
+    const bg2 = sel ? T.accent : T.cream;
     s.text(x + 3, ry, ellipsize(it.name, nameW), fg, bg2, ATTR_BOLD, nameW);
     const descX = x + 3 + nameW + 1;
-    s.text(descX, ry, ellipsize(it.desc, Math.max(0, x + mw - 2 - descX)),
-      sel ? mix(T.accent2, T.bg, 0.75) : T.dim, bg2, ATTR_DIM);
+    s.text(descX, ry, ellipsize(it.desc || '', Math.max(0, x + mw - 2 - descX)),
+      sel ? mix(T.accent, T.bg, 0.75) : T.dim, bg2, ATTR_DIM);
   }
 
   // scroll pip on the right frame — shows there is more above/below
   if (n > rows) {
-    const pos = Math.round((st.slashIndex / (n - 1)) * (rows - 1));
+    const pos = Math.round((menu.index / (n - 1)) * (rows - 1));
     for (let i = 0; i < rows; i++) {
       const on = i === pos;
       s.put(x + mw - 1, my + 1 + i, on ? BLOCK.full : BLOCK.l1, mix(T.cream, on ? T.accent : T.sand, p));

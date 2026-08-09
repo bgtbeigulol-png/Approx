@@ -71,6 +71,7 @@ export function clippedPlate(s, x, y, w, h, fg = T.fg, bg = T.bg) {
   }
   for (const cell of repairs) {
     s.ch[cell.i] = ' ';
+    s.copyCh[cell.i] = ' ';
     s.fg[cell.i] = cell.fg;
     s.bg[cell.i] = cell.bg;
     s.at[cell.i] = cell.at;

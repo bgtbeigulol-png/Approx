@@ -10,7 +10,7 @@ Approx 是一个运行在终端里的编程智能体工作区，由
   <img src="assets/approx-banner.jpg" alt="Approx CLI 项目横幅" width="800">
 </p>
 
-当前版本是早期 beta，正式验证环境为 Windows Terminal 与 PowerShell 7。
+Approx v0.1.0 当前正式验证环境为 Windows Terminal 与 PowerShell 7。
 
 ## 安装
 
@@ -18,7 +18,7 @@ Approx 是一个运行在终端里的编程智能体工作区，由
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-npm install --global @bgtbeigulol-png/approx@beta
+npm install --global @bgtbeigulol-png/approx
 approx
 ```
 
@@ -47,6 +47,8 @@ $ErrorActionPreference = 'Stop'
 approx --continue      # 继续最近一次对话
 approx --no-splash     # 跳过启动动画
 approx --scripted      # 运行离线演示
+approx update          # 安装最新版本
+approx --version       # 显示已安装版本
 approx --help
 ```
 
@@ -57,6 +59,7 @@ approx --help
 | `Shift+Tab` | 切换 Go / Plan |
 | `Ctrl+P` | 命令面板 |
 | `Ctrl+K` | Git 工作台 |
+| `Ctrl+B` | Approde 技能与 Prompt |
 | `Ctrl+O` | 设置 |
 | `Ctrl+G` | 快速跳转 |
 | `Ctrl+S` | 已保存对话 |
@@ -66,17 +69,48 @@ approx --help
 
 输入 `/help` 查看完整列表，输入 `/git` 打开 Git 工作台。
 
+在输入框中键入 `@` 可以引用工作区文件。Approx 会补全嵌套项目路径、自动为含空格
+的路径加引号，并把引用作为普通 Prompt 文本原样交给 Pi；只有确实需要内容时才读取
+对应文件。
+
+## 更新
+
+在任意终端运行 `approx update` 即可检查并安装最新版本。Git checkout 会跟随
+当前配置的 upstream，要求工作区干净，并在 fast-forward 拉取后同步 npm 依赖；
+npm 安装版会查询 registry，并全局安装精确的最新发布版本。Settings 中可以控制
+更新提示和自动更新；应用内也可以使用 `/update`、`/update install` 和
+`/update hide` 完成同一流程。
+
+`approx update --help` 只显示独立更新器说明，不会连接 Git 或 npm 更新通道。
+
 ## Plan Mode
 
 Go Mode 会立即开始工作。Plan Mode 会先问几个关键问题并展示方案，再让智能体
-修改文件。按 `Y` 或 `Enter` 批准，按 `N` 要求修改。
+修改文件。按 `Y` 或 `Enter` 批准，按 `N` 要求修改。Plan 状态会随会话保存；
+智能体工作期间若计划被编辑，它会从最新快照重新开始。
+
+## Approde
+
+按 `Ctrl+B` 或输入 `/approde` 打开 Approde。右侧停靠栏可以在不丢失对话的前提下
+启用或禁用 Pi 发现的技能与 Prompt，也可以保存命名预设、恢复上次使用的集合，并在
+应用前审核模型主动请求的变更。
+
+## 状态与 Effort
+
+`/status` 提供四页状态表，分别展示上下文占用、近期 Token 活动、模型与 Effort
+分布以及成本汇总；用量历史会在本地保留最多 90 天。`/effort` 会打开当前模型支持的
+推理等级选择器；一轮工作期间选择的新等级从下一轮开始生效。
 
 ## Git 工作台
 
 按 `Ctrl+K` 或输入 `/git` 打开。这里会显示当前分支、最近提交、工作区改动、已
-暂存改动和选中文件的差异，也可以直接暂存、取消暂存、刷新和提交。
+暂存改动、净行数统计和选中文件的差异，也可以直接暂存、取消暂存、确认后丢弃、
+刷新和提交。二进制文件会显示明确标签，超大差异会在拖垮终端进程前截断预览。
 
 一轮对话产生的文件编辑会在记录中合并成简洁的变更摘要，需要时展开即可查看。
+
+编辑较早的消息会回退 Pi 会话分支并恢复已捕获的 Write/Edit 文件快照；单步重做会
+重新接回被放弃的分支并重放对应文件状态。
 
 ## 常见问题
 

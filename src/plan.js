@@ -250,7 +250,7 @@ export function buildPlanTurnInjection(value) {
     return [
       '[APPROX MODE: GO]',
       'Execute the user intent directly and keep visible progress truthful. For a large, ambiguous, multi-system, or high-consequence request, call set_mode with mode="plan" before making changes. Do not merely announce a plan-mode switch.',
-      'When an active plan exists, use update_plan as work advances: mark only actually finished items completed, keep one current item in_progress, revise stale steps, and preserve hidden notes that still matter.',
+      'When an active plan exists, use update_plan as work advances: mark only actually finished items completed, keep one current item in_progress, revise stale steps, and preserve hidden notes that still matter. Watch for a newer host-injected plan snapshot and follow it immediately instead of finishing stale work.',
       live,
     ].join('\n');
   }
@@ -261,7 +261,7 @@ export function buildPlanTurnInjection(value) {
   return [
     '[APPROX MODE: PLAN]',
     'Stay in analysis and design. Examine the user\'s underlying intent, constraints, failure modes, alternative implementations, and at least one non-obvious opportunity. Prefer a sharp, creative execution design over a generic checklist.',
-    'Use ask_questions for material unknowns (up to five structured single/multi/text questions). Use update_plan to publish and continuously maintain the visible Todo list and the hidden Notes-to-self. Do not perform implementation mutations before explicit user approval. After approval, call set_mode with mode="go" and execute the approved plan to completion.',
+    'Use ask_questions for material unknowns (up to five structured single/multi/text questions). Use update_plan to publish and continuously maintain the visible Todo list and the hidden Notes-to-self; put concise private continuity, constraints, and decisions in the notes field rather than visible progress prose. Do not perform implementation mutations before explicit user approval. After approval, call set_mode with mode="go" and execute the approved plan to completion.',
     `Approval: ${plan.approval}. Intent: ${clip(intent, 420)}`,
     `Proposal: ${clip(proposal, 700)}`,
     `Todo (${progress.done}/${progress.total}):\n${formatTodos(plan.todos)}`,

@@ -53,7 +53,8 @@ export function normalizeQuestionnaireRequest(value = {}) {
     ids.add(id);
     const rawType = String(raw.type ?? '').toLowerCase();
     const type = normalizeQuestionType(raw.type);
-    const options = type === 'text' ? [] : normalizeChoices(raw.options ?? raw.choices);
+    const allowOther = raw.allowOther !== false;
+    const options = type === 'text' ? [] : normalizeChoices(raw.options ?? raw.choices, allowOther);
     // A malformed choice question remains answerable instead of trapping the UI.
     const resolvedType = type !== 'text' && options.every((option) => option.other) ? 'text' : type;
     questions.push({
@@ -69,6 +70,7 @@ export function normalizeQuestionnaireRequest(value = {}) {
       minSelections: clamp(finiteInt(raw.minSelections, raw.required === false ? 0 : 1), 0, options.length),
       maxSelections: clamp(finiteInt(raw.maxSelections, options.length), 1, Math.max(1, options.length)),
       maxLength: clamp(finiteInt(raw.maxLength, 4_000), 1, 12_000),
+      allowOther,
     });
   }
   return {
@@ -163,6 +165,7 @@ export const questionnaireMethods = {
   questionnaireBack() {
     const state = this.ensureQuestionnaireState();
     if (state.index > 0) return this.setQuestionnaireIndex(state.index - 1);
+    this.cancelQuestionnaire('back');
     return true;
   },
 
@@ -484,7 +487,7 @@ function normalizeQuestionType(value) {
   return 'single';
 }
 
-function normalizeChoices(value) {
+function normalizeChoices(value, allowOther = true) {
   if (!Array.isArray(value)) return [];
   const choices = [];
   const values = new Set();
@@ -500,7 +503,7 @@ function normalizeChoices(value) {
   }
   // Every choice question keeps one escape hatch for answers the model did not
   // predict. Reserve the last slot when a request already fills the cap.
-  if (!choices.some((item) => item.value === OTHER_OPTION_VALUE)) {
+  if (allowOther && !choices.some((item) => item.value === OTHER_OPTION_VALUE)) {
     if (choices.length >= MAX_CHOICES) choices.pop();
     choices.push({
       value: OTHER_OPTION_VALUE,

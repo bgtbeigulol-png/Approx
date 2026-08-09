@@ -95,4 +95,23 @@ function fakeSession({ streaming = false, idle = true, wait } = {}) {
   assert.equal(events.at(-1)?.reason, 'revision request failed');
 }
 
+{
+  const backend = new PiBackend();
+  const session = fakeSession({ streaming: true, idle: false });
+  let aborted = 0;
+  session.abort = async () => {
+    aborted++;
+    session.isStreaming = false;
+    session.isIdle = true;
+  };
+  backend.session = session;
+  backend.updatePlan({ action: 'replace', mode: 'go', intent: 'Use the revised route', source: 'user' });
+  await backend.planRevisionTask;
+  assert.equal(aborted, 1);
+  assert.equal(session.calls.length, 1);
+  assert.equal(session.calls[0].message.customType, 'approx-plan-live-revision');
+  assert.equal(session.calls[0].options.triggerTurn, true);
+  assert.equal(session.calls[0].message.details.plan.intent, 'Use the revised route');
+}
+
 console.log('pi plan revision tests passed');

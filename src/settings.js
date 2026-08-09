@@ -47,6 +47,7 @@ export function settingsModel(app) {
       items: [
         {
           key: 'accent', label: 'Accent', type: 'select',
+          hint: 'Hot colour used for selection, bars, and live activity.',
           options: ACCENTS.map((a) => a.name),
           swatch: ACCENTS.map((a) => a.color),
           get: () => st.accent,
@@ -59,11 +60,13 @@ export function settingsModel(app) {
       items: [
         {
           key: 'reduceMotion', label: 'Reduce motion', type: 'toggle',
+          hint: 'Snap overlays and springs straight to their target state.',
           get: () => st.reduceMotion,
           set: (v) => app.setReduceMotion(v),
         },
         {
           key: 'showFps', label: 'Frame meter', type: 'toggle',
+          hint: 'Overlay frame timing and dirty-cell counts while rendering.',
           get: () => st.showFps,
           set: (v) => app.setShowFps(v),
         },
@@ -74,30 +77,36 @@ export function settingsModel(app) {
       items: [
         {
           key: 'model', label: st.pendingModel ? 'Model · pending' : 'Model', type: 'select',
+          hint: 'Backend model. A change applies from your next message.',
           options: models.map((model) => model.label),
           get: () => Math.max(0, models.findIndex((model) => model.label === (st.pendingModel?.label ?? st.model))),
           set: (i) => app.setModel(models[i]),
         },
         {
           key: 'effort', label: st.pendingEffort ? 'Reasoning effort · pending' : 'Reasoning effort', type: 'select',
+          hint: 'How long the model thinks before answering. Higher costs more.',
           options: st.effortOptions.length ? st.effortOptions : [st.effort || 'default'],
           get: () => Math.max(0, (st.effortOptions.length ? st.effortOptions : [st.effort || 'default']).indexOf(st.pendingEffort || st.effort)),
           set: (i) => app.setEffort((st.effortOptions.length ? st.effortOptions : [st.effort || 'default'])[i]),
+          open: () => app.openEffortPicker(),
         },
         {
           key: 'markdown', label: 'Markdown', type: 'select',
+          hint: 'Render replies as styled markdown instead of plain text.',
           options: ['on', 'off'],
           get: () => st.markdown ? 0 : 1,
           set: (i) => app.setMarkdown(i === 0),
         },
         {
           key: 'autoCompactMode', label: 'Auto compact by', type: 'select',
+          hint: 'Measure the compaction trip point as a share or a token count.',
           options: ['percent', 'tokens'],
           get: () => st.autoCompactMode === 'tokens' ? 1 : 0,
           set: (i) => app.setAutoCompactMode(i === 1 ? 'tokens' : 'percent'),
         },
         {
           key: 'autoCompactThreshold', label: 'Auto compact at', type: 'select',
+          hint: 'Context load that triggers an automatic summarise-and-continue.',
           options: st.autoCompactMode === 'tokens'
             ? AUTO_COMPACT_TOKEN_OPTIONS.map(formatCompactTokens)
             : AUTO_COMPACT_PERCENT_OPTIONS.map((value) => `${value}%`),
@@ -110,19 +119,61 @@ export function settingsModel(app) {
         },
         {
           key: 'clear', label: 'Clear context', type: 'action',
+          hint: 'Drop the transcript and start a fresh conversation.',
           run: () => app.clearTranscript(),
         },
         {
           key: 'history', label: 'Saved conversations', type: 'action',
+          hint: 'Browse and resume a previously saved session.',
           run: () => app.openSessions(),
         },
+      ],
+    },
+    {
+      title: 'UPDATES',
+      items: [
         {
-          key: 'about', label: 'About Approx', type: 'action',
-          run: () => { app.closeSettings(); app.later(() => app.showAbout(), 120); },
+          key: 'updateNotifications', label: 'Update notifications', type: 'toggle',
+          hint: 'Announce a new release in the transcript when one lands.',
+          get: () => app.preferences.updateNotifications !== false,
+          set: (v) => app.setUpdateNotifications(v),
+        },
+        {
+          key: 'autoUpdate', label: 'Auto update', type: 'toggle',
+          hint: 'Install a new Git or npm release as soon as it is found.',
+          get: () => !!app.preferences.autoUpdate,
+          set: (v) => app.setAutoUpdate(v),
+        },
+        {
+          key: 'checkUpdates', label: updateCheckLabel(st.update), type: 'action',
+          hint: updateCheckHint(st.update),
+          run: () => { void app.checkForUpdates({ force: true }); },
         },
       ],
     },
   ];
+}
+
+function updateCheckLabel(update = {}) {
+  if (update.updating) return 'Installing latest update';
+  if (update.checking) return 'Checking for updates';
+  const info = update.info;
+  if (!info) return 'Check for updates';
+  if (info.available) return `Update available · ${info.version || 'ready'}`;
+  if (info.updated) return 'Updated · restart Approx';
+  if (info.reason && info.reason !== 'up-to-date') return 'Update check · retry';
+  return `Up to date · ${info.currentVersion || info.version || info.channel || 'current'}`;
+}
+
+function updateCheckHint(update = {}) {
+  if (update.updating) return 'Installing the checked release; restart Approx when it completes.';
+  if (update.checking) return 'Contacting the active Git or npm update channel.';
+  const info = update.info;
+  if (!info) return 'Ask the active Git or npm channel for its newest release.';
+  if (info.available) return `${info.channel || 'Update'} ${info.version || 'release'} is ready; use /update install.`;
+  if (info.updated) return `Approx ${info.version || ''} is installed; restart to load it.`.replace(/\s+/g, ' ');
+  if (info.reason && info.reason !== 'up-to-date') return `Last check failed: ${info.error || info.reason}. Press Enter to retry.`;
+  return `Checked ${info.channel || 'update channel'}; this installation is current.`;
 }
 
 /** Flat list of just the interactive rows, in page order — the cursor walks this. */

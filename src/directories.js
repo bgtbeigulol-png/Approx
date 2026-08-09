@@ -56,20 +56,28 @@ export function createDirectoryPickerState(initialPath = process.cwd()) {
   };
 }
 
-async function directoryChildren(path) {
+/** Read visible filesystem entries once for both /cd and inline file references. */
+export async function readDirectoryEntries(path, { includeFiles = false, excludeNames = [] } = {}) {
+  const excluded = new Set(excludeNames);
   const entries = await readdir(path, { withFileTypes: true });
   const children = await Promise.all(entries.map(async (entry) => {
-    if (entry.isDirectory()) return { name: entry.name, linked: false };
+    if (excluded.has(entry.name)) return null;
+    if (entry.isDirectory()) return { name: entry.name, kind: 'directory', linked: false };
+    if (entry.isFile()) return includeFiles ? { name: entry.name, kind: 'file', linked: false } : null;
     if (!entry.isSymbolicLink()) return null;
     try {
-      return (await stat(join(path, entry.name))).isDirectory()
-        ? { name: entry.name, linked: true }
-        : null;
+      const linked = await stat(join(path, entry.name));
+      if (linked.isDirectory()) return { name: entry.name, kind: 'directory', linked: true };
+      if (includeFiles && linked.isFile()) return { name: entry.name, kind: 'file', linked: true };
+      return null;
     } catch {
       return null;
     }
   }));
-  return children.filter(Boolean).sort((a, b) => PATH_COLLATOR.compare(a.name, b.name));
+  return children.filter(Boolean).sort((a, b) => {
+    if (includeFiles && a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1;
+    return PATH_COLLATOR.compare(a.name, b.name);
+  });
 }
 
 function pickerItems(path, children) {
@@ -136,7 +144,7 @@ export const directoryMethods = {
     this.s?.invalidate();
     try {
       const canonical = await resolveDirectory(path, previousPath);
-      const children = await directoryChildren(canonical);
+      const children = await readDirectoryEntries(canonical);
       if (requestId !== picker.requestId || !picker.open) return null;
       picker.path = canonical;
       picker.pathInput = canonical;

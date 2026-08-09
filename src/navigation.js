@@ -91,7 +91,8 @@ export const navigationMethods = {
     if (k.name === 'enter' || k.name === 'space') {
       const it = rows[this.st.settingsIndex];
       if (it.type === 'toggle') { it.set(!it.get()); this.flashSetting(); }
-      else if (it.type === 'action') it.run();
+      else if (it.type === 'action') { it.run(); this.flashSetting(); }
+      else if (it.open) it.open();
       else this.settingsAdjust(1);
     }
   },

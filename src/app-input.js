@@ -4,7 +4,7 @@ import {
   setComposerInput, insertComposerText, deleteComposerBackward, deleteComposerForward,
   deleteComposerWord, moveComposerCursor, moveComposerLineEdge,
 } from './composer-state.js';
-import { SLASH_ROWS } from './ui/composer.js';
+import { SUGGESTION_ROWS } from './ui/composer.js';
 import { SPLASH_MS } from './ui/splash.js';
 
 const WHEEL_STEP = 3;
@@ -29,18 +29,41 @@ export const inputMethods = {
     if (k.ctrl && k.name === 'c') return this.quit();
     if (!k.mouse && k.name !== 'focusin' && k.name !== 'focusout') this.st.textSelection = null;
 
+    if (this.st.effortPicker?.open) {
+      if (k.name === 'mousemove') return this.effortPickerPointer(k.x, k.y, false);
+      if (k.name === 'mousedown') return this.effortPickerPointer(k.x, k.y, true);
+      return this.effortPickerKey(k);
+    }
+
     if (this.st.questionnaire?.open) {
       if (k.name === 'mousemove') return this.questionnairePointer(k.x, k.y, false);
       if (k.name === 'mousedown') return this.questionnairePointer(k.x, k.y, true);
       return this.questionnaireKey(k);
     }
 
+    if (this.st.status?.open) {
+      if (k.name === 'mousedown') return this.statusPointer(k.x, k.y);
+      return this.statusKey(k);
+    }
+
+    // Approde is a docked sidebar. When focused it captures the keyboard; when
+    // merely open it stays visible but lets the composer keep typing, while
+    // still handling clicks that land inside its panel.
+    if (this.st.approde?.open) {
+      if (k.name === 'mousemove') { if (this.approdePointer(k.x, k.y, false)) return; }
+      else if (k.name === 'mousedown') { if (this.approdePointer(k.x, k.y, true)) return; }
+      else if (this.st.approde.focused && (k.name === 'wheelup' || k.name === 'wheeldown')) {
+        return this.moveApprode(k.name === 'wheeldown' ? 1 : -1);
+      }
+      else if (this.st.approde.focused && !k.mouse) return this.approdeKey(k);
+    }
+
     if (this.st.view === 'git') return this.gitKey(k);
 
     if (this.st.directoryPicker?.open) return this.directoryKey(k);
-    // Slash suggestions are the active prompt layer. Let them consume keyboard
+    // Composer suggestions are the active prompt layer. Let them consume keyboard
     // navigation before a focused Plan panel sees the same arrows/Enter.
-    if (this.st.plan?.focused && !k.mouse && !this.slashOpen()) return this.planKey(k);
+    if (this.st.plan?.focused && !k.mouse && !this.composerSuggestionOpen()) return this.planKey(k);
     if (this.st.messageEdit.mode === 'confirm') return this.rewindConfirmKey(k);
     if (this.st.sessionPicker.open) return this.sessionKey(k);
     if (this.st.jump) return this.jumpKey(k);
@@ -49,6 +72,7 @@ export const inputMethods = {
     if (k.name === 'wheelup' || k.name === 'wheeldown') {
       const dir = k.name === 'wheeldown' ? 1 : -1;
       if (this.st.palette) return this.paletteMove(dir * WHEEL_STEP);
+      if (this.fileMentionOpen()) return this.moveFileMention(dir * WHEEL_STEP, SUGGESTION_ROWS);
       if (this.slashOpen()) return this.slashMove(dir * WHEEL_STEP);
       return this.scrollBy(dir * WHEEL_STEP);
     }
@@ -88,6 +112,7 @@ export const inputMethods = {
         if (hit.offset === 1) return this.toggleToolGroup(hit.msg);
       }
       if (hit?.msg.role === 'workgroup') {
+        if (hit.line?.kind === 'workfilehead') return this.toggleFileEditGroup(hit.line.group);
         if (hit.line?.kind === 'worktoolhead') return this.toggleToolGroup(hit.line.group);
         if (hit.line?.kind === 'toolchildhead') return this.toggleTool(hit.line.tool);
         if (hit.line?.kind === 'workgrouphead' || hit.offset === 1) return this.toggleWorkGroup(hit.msg);
@@ -117,6 +142,7 @@ export const inputMethods = {
     if (k.ctrl && k.name === 't') return this.cycleAccent();
     if (k.ctrl && k.name === 'u') return this.toggleFocusedTool();
     if (k.ctrl && k.name === 'e') return this.keyboardEditMessage();
+    if (k.ctrl && k.name === 'b') return this.toggleApprode();
     if (k.alt && k.name === 'r') return this.performRedo();
     if (k.alt && k.name.toLowerCase() === 'p') return this.togglePlanExpanded();
     if (k.shift && k.name === 'tab') return this.cycleMode();
@@ -130,15 +156,18 @@ export const inputMethods = {
       return this.cycleSelectedUser(k.name === 'down' ? 1 : -1);
     }
 
+    const fileMentionOpen = this.fileMentionOpen();
     const slashOpen = this.slashOpen();
-    if (slashOpen && (k.name === 'up' || k.name === 'down')) {
-      this.slashMove(k.name === 'down' ? 1 : -1);
+    if ((fileMentionOpen || slashOpen) && (k.name === 'up' || k.name === 'down')) {
+      if (fileMentionOpen) this.moveFileMention(k.name === 'down' ? 1 : -1, SUGGESTION_ROWS);
+      else this.slashMove(k.name === 'down' ? 1 : -1);
       return;
     }
+    if (fileMentionOpen && k.name === 'tab') return this.acceptFileMention();
     if (slashOpen && k.name === 'tab') {
       const item = this.st.slashMatches[this.st.slashIndex];
       setComposerInput(this.st, item.terminal ? item.name : `${item.name} `);
-      this.refreshSlash();
+      this.refreshComposerSuggestions();
       return;
     }
 
@@ -146,42 +175,47 @@ export const inputMethods = {
       case 'escape':
         if (this.st.messageEdit.mode === 'editing' || this.st.messageEdit.mode === 'selected') {
           this.cancelMessageEdit();
+        } else if (fileMentionOpen) {
+          this.closeFileMention({ dismiss: true });
         } else if (this.st.busy) {
           this.interrupt();
         } else if (this.st.input) {
           setComposerInput(this.st, '');
-          this.refreshSlash();
+          this.refreshComposerSuggestions();
         }
         return;
       case 'enter':
         if (this.st.messageEdit.mode === 'selected') return this.beginMessageEdit(this.st.messageEdit.target);
         if (k.shift || k.alt) {
           insertComposerText(this.st, '\n');
-          this.refreshSlash();
+          this.refreshComposerSuggestions();
           return;
         }
+        if (fileMentionOpen) return this.acceptFileMention();
         if (slashOpen) {
           const item = this.st.slashMatches[this.st.slashIndex];
           if (item) {
             setComposerInput(this.st, item.terminal ? item.name : `${item.name} `);
-            this.refreshSlash();
+            this.refreshComposerSuggestions();
             if (!item.terminal) return;
           }
         }
         return this.submit();
       case 'backspace':
         deleteComposerBackward(this.st);
-        this.refreshSlash();
+        this.refreshComposerSuggestions();
         return;
       case 'delete':
         deleteComposerForward(this.st);
-        this.refreshSlash();
+        this.refreshComposerSuggestions();
         return;
       case 'left':
         moveComposerCursor(this.st, -1);
+        this.refreshComposerSuggestions();
         return;
       case 'right':
         moveComposerCursor(this.st, 1);
+        this.refreshComposerSuggestions();
         return;
       case 'up':
         return this.historyPrev();
@@ -199,7 +233,7 @@ export const inputMethods = {
         return this.scrollToBottom();
       case 'space':
         insertComposerText(this.st, ' ');
-        this.refreshSlash();
+        this.refreshComposerSuggestions();
         return;
       case 'tab':
         return;
@@ -209,18 +243,19 @@ export const inputMethods = {
 
     if (k.ctrl && k.name === 'j') {
       insertComposerText(this.st, '\n');
+      this.refreshComposerSuggestions();
       return;
     }
     if (k.ctrl && k.name === 'w') {
       deleteComposerWord(this.st);
-      this.refreshSlash();
+      this.refreshComposerSuggestions();
       return;
     }
     if (k.ctrl || k.alt) return;
 
     if (k.printable) {
       insertComposerText(this.st, k.name);
-      this.refreshSlash();
+      this.refreshComposerSuggestions();
       this.st.focusAnim.set(1);
     }
   },
@@ -231,7 +266,7 @@ export const inputMethods = {
     if (this.st.histIdx < 0) this.st.draft = this.st.input;
     this.st.histIdx = this.st.histIdx < 0 ? h.length - 1 : Math.max(0, this.st.histIdx - 1);
     setComposerInput(this.st, h[this.st.histIdx]);
-    this.refreshSlash();
+    this.refreshComposerSuggestions();
   },
 
   historyNext() {
@@ -245,11 +280,20 @@ export const inputMethods = {
     } else {
       setComposerInput(this.st, h[this.st.histIdx]);
     }
-    this.refreshSlash();
+    this.refreshComposerSuggestions();
   },
 
   slashOpen() {
     return this.st.slashMatches.length > 0 && this.st.input.startsWith('/');
+  },
+
+  composerSuggestionOpen() {
+    return this.fileMentionOpen() || this.slashOpen();
+  },
+
+  refreshComposerSuggestions() {
+    this.refreshSlash();
+    void this.refreshFileMention();
   },
 
   refreshSlash() {
@@ -258,19 +302,18 @@ export const inputMethods = {
       this.st.slashMatches = slashSuggestions(this, inp);
       this.st.slashIndex = 0;
       this.st.slashScroll = 0;
-      this.st.slashAnim.set(1);
     } else {
       this.st.slashMatches = [];
       this.st.slashScroll = 0;
-      this.st.slashAnim.set(0);
     }
+    this.syncComposerSuggestionAnimation();
   },
 
   slashMove(d) {
     const n = this.st.slashMatches.length;
     if (!n) return;
     this.st.slashIndex = (this.st.slashIndex + d + n) % n;
-    const rows = Math.min(SLASH_ROWS, n);
+    const rows = Math.min(SUGGESTION_ROWS, n);
     if (this.st.slashIndex < this.st.slashScroll) {
       this.st.slashScroll = this.st.slashIndex;
     } else if (this.st.slashIndex >= this.st.slashScroll + rows) {

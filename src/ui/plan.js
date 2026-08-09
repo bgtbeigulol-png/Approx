@@ -41,8 +41,10 @@ export function drawPlanPanel(s, st, x, y, w, t, maxH = Infinity) {
   const py = y + slide;
   const pulse = clamp(plan.pulse?.v ?? 0, 0, 1);
   const progress = planProgress(plan);
-  const bg = mix(T.cream, plan.mode === 'plan' ? T.crust : T.bg, plan.mode === 'plan' ? 0.24 : 0.12);
-  const signal = plan.mode === 'plan' ? T.accent : T.accent2;
+  const signal = T.accent;
+  const bg = plan.mode === 'plan'
+    ? mix(T.cream, T.crust, 0.24)
+    : mix(T.cream, signal, 0.085);
   const border = mix(T.rule, signal, 0.45 + p * 0.35 + pulse * 0.16);
 
   panel(s, x, py, w, h, {

@@ -15,6 +15,9 @@ import { queueMethods } from './queue.js';
 import { runtimeSettingMethods } from './runtime-settings.js';
 import { backendBridgeMethods } from './backend-bridge.js';
 import { directoryMethods, sameDirectory } from './directories.js';
+import { effortPickerMethods } from './effort-picker.js';
+import { fileMentionMethods } from './file-mentions.js';
+import { approdeMethods } from './approde.js';
 import { gitMethods } from './git.js';
 import { planMethods } from './plan.js';
 import { questionnaireMethods } from './questionnaire.js';
@@ -24,6 +27,8 @@ import { turnMethods } from './app-turns.js';
 import { transcriptMethods } from './app-transcript.js';
 import { interactionMethods } from './app-interaction.js';
 import { APP_ACCENTS, createAppState } from './app-state.js';
+import { statusMethods } from './app-status.js';
+import { updaterMethods } from './app-updater.js';
 
 export class App {
   constructor({ noSplash = false, harness = false, backend = null, persist = false } = {}) {
@@ -78,6 +83,9 @@ export class App {
     process.on('SIGINT', () => this.quit());
     this.clock.start((dt, t, frame) => this.tick(dt, t, frame));
     if (this.st.phase === 'main' && !this.st.msgs.length) this.seed();
+    if (this.preferences.updateNotifications !== false || this.preferences.autoUpdate) {
+      this.later(() => { void this.checkForUpdates(); }, 900);
+    }
     return this;
   }
 
@@ -130,7 +138,8 @@ Object.assign(App.prototype, transcriptMethods);
 Object.assign(App.prototype, interactionMethods);
 
 Object.assign(App.prototype, queueMethods);
-Object.assign(App.prototype, directoryMethods, gitMethods, planMethods, questionnaireMethods);
+Object.assign(App.prototype, directoryMethods, effortPickerMethods, approdeMethods, gitMethods, planMethods, questionnaireMethods);
+Object.assign(App.prototype, fileMentionMethods);
 Object.assign(App.prototype, inputMethods);
 // ---------- overlays ----------
 
@@ -140,6 +149,7 @@ Object.assign(App.prototype, turnMethods);
 
 Object.assign(App.prototype, runtimeSettingMethods);
 Object.assign(App.prototype, backendBridgeMethods);
+Object.assign(App.prototype, statusMethods, updaterMethods);
 
 Object.assign(App.prototype, renderMethods);
 

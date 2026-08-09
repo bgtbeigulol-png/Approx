@@ -21,7 +21,8 @@ export const transcriptMethods = {
         && landed.role !== 'toolgroup' && landed.role !== 'workgroup'
         && landed.subtype !== 'changeset' && this.st.markdown;
     }
-    if (landed.role === 'tool') this.landTool(landed);
+    if (landed.role === 'tool' && isMutationTool(landed)) this.landFileEdit(landed);
+    else if (landed.role === 'tool') this.landTool(landed);
     else this.st.msgs.push(landed);
     if (this.st.jump) this.refreshJump();
     if (this.st.atBottom) this.scrollToBottom();
@@ -76,6 +77,60 @@ export const transcriptMethods = {
     return tool;
   },
 
+  landFileEdit(tool) {
+    const messages = this.st.msgs;
+    const userIndex = messages.findLastIndex((message) => message.role === 'user');
+    let work = messages.slice(userIndex + 1).find((message) => message.role === 'workgroup') ?? null;
+    const trailing = messages.at(-1);
+    if (!work) {
+      const notes = trailing && (trailing.role === 'approx' || trailing.role === 'assistant')
+        && String(trailing.stopReason ?? '').toLowerCase() === 'tooluse'
+        ? [messages.pop()] : [];
+      work = {
+        role: 'workgroup',
+        callId: `work-${++this._toolGroupSeq}`,
+        title: 'Work',
+        text: '',
+        time: notes[0]?.time ?? tool.time,
+        enter: 0,
+        notes,
+        tools: [],
+        fileEdits: null,
+        expanded: true,
+        expandAnim: new Spring(1, { stiff: 18, damp: 0.86 }),
+        markdown: false,
+        live: true,
+      };
+      messages.push(work);
+    } else if (trailing && trailing !== work
+      && (trailing.role === 'approx' || trailing.role === 'assistant')
+      && String(trailing.stopReason ?? '').toLowerCase() === 'tooluse') {
+      messages.pop();
+      work.notes.push(trailing);
+    }
+    if (!work.fileEdits) {
+      work.fileEdits = {
+        role: 'fileeditgroup',
+        callId: `file-edit-${++this._toolGroupSeq}`,
+        title: 'File Edit',
+        tools: [],
+        files: [],
+        summary: { files: 0, added: 0, removed: 0 },
+        expanded: true,
+        expandAnim: new Spring(1, { stiff: 18, damp: 0.86 }),
+        markdown: false,
+        live: true,
+      };
+    }
+    work.fileEdits.tools.push(tool);
+    if (work.fileEdits.tools.length === 1 && tool.title) {
+      work.fileEdits.title = `File Edit · ${tool.title}`;
+    }
+    this.refreshFileEditGroup(tool);
+    invalidateLayoutTree(messages);
+    return tool;
+  },
+
   archiveCompletedWork() {
     let changed = false;
     let again = true;
@@ -99,7 +154,14 @@ export const transcriptMethods = {
           && segment.some((message, index) => index < finalLocal && message !== existingWork
             && (message.role === 'tool' || message.role === 'toolgroup'
               || message.role === 'approx' || message.role === 'assistant'));
-        if (existingWork && !hasRawWorkAfterArchive) continue;
+        if (existingWork && !hasRawWorkAfterArchive) {
+          existingWork.archived = true;
+          existingWork.live = false;
+          existingWork.expanded = false;
+          existingWork.expandAnim?.set(0, true);
+          invalidateLayoutTree([existingWork]);
+          continue;
+        }
 
         const entries = segment.map((message, index) => ({
           msg: message,
@@ -135,7 +197,12 @@ export const transcriptMethods = {
           });
         }
 
-        const toolGroup = tools.length ? this.makeArchivedToolGroup(tools, segment, workEntries) : null;
+        const mutationTools = tools.filter(isMutationTool);
+        const ordinaryTools = tools.filter((tool) => !isMutationTool(tool));
+        const toolGroup = ordinaryTools.length
+          ? this.makeArchivedToolGroup(ordinaryTools, segment, workEntries) : null;
+        const fileEdits = mutationTools.length
+          ? this.makeArchivedFileEditGroup(mutationTools, existingWork?.fileEdits) : null;
         const workgroup = existingWork ?? {
           role: 'workgroup',
           title: 'Work',
@@ -144,6 +211,7 @@ export const transcriptMethods = {
           enter: 1,
           notes: [],
           tools: [],
+          fileEdits: null,
           expanded: false,
           expandAnim: new Spring(0, { stiff: 18, damp: 0.86 }),
           markdown: false,
@@ -151,7 +219,9 @@ export const transcriptMethods = {
         };
         workgroup.notes = notes;
         workgroup.tools = toolGroup ? [toolGroup] : [];
+        workgroup.fileEdits = fileEdits;
         workgroup.archived = true;
+        workgroup.live = false;
         workgroup._lines = null;
 
         const rebuilt = [];
@@ -193,6 +263,65 @@ export const transcriptMethods = {
       markdown: false,
       archived: true,
     };
+  },
+
+  makeArchivedFileEditGroup(tools, existing = null) {
+    const files = buildFileChanges(tools.flatMap(toolFileChangeInputs), this.st.cwdPath);
+    return {
+      role: 'fileeditgroup',
+      callId: existing?.callId ?? `file-edit-${++this._toolGroupSeq}`,
+      title: existing?.title || 'File Edit',
+      tools,
+      files,
+      summary: summarizeFileChanges(files),
+      expanded: !!existing?.expanded,
+      expandAnim: existing?.expandAnim ?? new Spring(0, { stiff: 18, damp: 0.86 }),
+      markdown: false,
+      archived: true,
+      live: false,
+    };
+  },
+
+  refreshFileEditGroup(tool) {
+    const group = this.toolGroupFor(tool);
+    if (group?.role !== 'fileeditgroup') return null;
+    group.files = buildFileChanges(group.tools.flatMap(toolFileChangeInputs), this.st.cwdPath);
+    group.summary = summarizeFileChanges(group.files);
+    invalidateLayoutTree(this.st.msgs);
+    return group;
+  },
+
+  restoreHistoricChangesets() {
+    const messages = this.st.msgs;
+    const userIndexes = messages.map((message, index) => message.role === 'user' ? index : -1)
+      .filter((index) => index >= 0);
+    let changed = false;
+    for (let turn = userIndexes.length - 1; turn >= 0; turn--) {
+      const start = userIndexes[turn] + 1;
+      const end = turn + 1 < userIndexes.length ? userIndexes[turn + 1] : messages.length;
+      const segment = messages.slice(start, end);
+      if (segment.some((message) => message.role === 'system' && message.subtype === 'changeset')) continue;
+      if (findFinalApprox(segment) < 0) continue;
+      const work = segment.find((message) => message.role === 'workgroup');
+      const files = work?.fileEdits?.files ?? [];
+      if (!files.length) continue;
+      messages.splice(end, 0, {
+        role: 'system',
+        subtype: 'changeset',
+        title: 'FILE CHANGES',
+        text: '',
+        files,
+        summary: summarizeFileChanges(files),
+        expanded: false,
+        expandAnim: new Spring(0, { stiff: 18, damp: 0.86 }),
+        markdown: false,
+        enter: 1,
+        time: segment.at(-1)?.time ?? '',
+      });
+      changed = true;
+    }
+    if (changed) invalidateLayoutTree(messages);
+    return changed;
   },
 
   appendTurnFileChanges(turn) {
@@ -303,6 +432,21 @@ export const transcriptMethods = {
         expanded: !!message.expanded,
         notes: (message.notes ?? []).map(snap),
         tools: (message.tools ?? []).map(snap),
+        ...(message.fileEdits ? { fileEdits: snap(message.fileEdits) } : {}),
+      } : {}),
+      ...(message.role === 'fileeditgroup' ? {
+        expanded: !!message.expanded,
+        summary: { ...message.summary },
+        tools: (message.tools ?? []).map(snap),
+        files: (message.files ?? []).map((file) => ({
+          path: file.path,
+          displayPath: file.displayPath,
+          kind: file.kind,
+          added: file.added,
+          removed: file.removed,
+          binary: !!file.binary,
+          diff: (file.diff ?? []).map((line) => ({ ...line })),
+        })),
       } : {}),
       ...(message.role === 'system' && message.subtype === 'changeset' ? {
         subtype: 'changeset',
@@ -392,6 +536,8 @@ export const transcriptMethods = {
     this.st.toastKind = kind;
     this.st.toastMax = 2.4;
     this.st.toastLife = 2.4;
+    this.s?.invalidate?.();
+    this.requestFrame?.();
   },
 
   recordOutputTokens(delta) {
@@ -449,7 +595,8 @@ function normalizeTitle(value) {
 }
 
 function isArchivableTool(message) {
-  return message?.role === 'tool' || message?.role === 'toolgroup' || message?.role === 'workgroup';
+  return message?.role === 'tool' || message?.role === 'toolgroup'
+    || message?.role === 'fileeditgroup' || message?.role === 'workgroup';
 }
 
 function findFinalApprox(segment) {
@@ -471,9 +618,19 @@ function collectLatestTurnMutations(messages) {
 function findToolGroup(container, tool) {
   if (container?.role === 'toolgroup' && container.tools?.includes(tool)) return container;
   if (container?.role === 'workgroup') {
+    if (container.fileEdits?.tools?.includes(tool)) return container.fileEdits;
     for (const group of container.tools ?? []) if (group.tools?.includes(tool)) return group;
   }
   return null;
+}
+
+function isMutationTool(tool) {
+  return /^(write|edit|apply_patch)$/i.test(String(tool?.name ?? ''));
+}
+
+function toolFileChangeInputs(tool) {
+  if (tool?.mutation) return [tool.mutation];
+  return Array.isArray(tool?.fileChanges) ? tool.fileChanges : [];
 }
 
 function fallbackToolGroupTitle(tools) {

@@ -7,6 +7,8 @@ import { T, paper, drawPaperGrain, mix } from './theme.js';
 import { drawCompact } from './ui/compact.js';
 import { drawComposer, drawRewindConfirm } from './ui/composer.js';
 import { drawDirectories } from './ui/directories.js';
+import { drawEffortPicker } from './ui/effort-picker.js';
+import { drawApprode } from './ui/approde.js';
 import { drawHeader, HEADER_H } from './ui/header.js';
 import { drawGit } from './ui/git.js';
 import { drawJumpList } from './ui/jumplist.js';
@@ -19,6 +21,7 @@ import { drawSessions } from './ui/sessions.js';
 import { drawSettings } from './ui/settings.js';
 import { drawSplash } from './ui/splash.js';
 import { drawStatus, STATUS_H } from './ui/status.js';
+import { drawStatusDashboard } from './ui/status-dashboard.js';
 import { drawTranscript, invalidateLayoutTree } from './ui/transcript.js';
 
 /** Animation advancement and frame composition. */
@@ -30,6 +33,7 @@ export const renderMethods = {
 
   onResize() {
     this.s.resize(process.stdout.columns, process.stdout.rows);
+    this.closeApprodeForNarrowScreen?.();
     const width = this.bodyWidth();
     for (const message of this.st.msgs) {
       if (!message.streaming) continue;
@@ -51,14 +55,17 @@ export const renderMethods = {
 
     const springs = [
       st.ctxUse, st.focusAnim, st.paletteAnim, st.slashAnim, st.railBulge, st.railAmt,
-      st.settingsAnim, st.settingsCursor, st.settingsFlash, st.jumpAnim,
+       st.settingsAnim, st.settingsCursor, st.settingsFlash, st.jumpAnim,
+       st.effortPicker?.anim, st.effortPicker?.cursor, st.effortPicker?.pulse,
+       st.status?.anim, st.status?.pulse,
       st.sessionPicker?.anim, st.rewindAnim, st.queueAnim, st.queuePulse,
       st.compact?.enter, st.compact?.progress, st.compact?.pulse,
       st.directoryPicker?.anim, st.directoryPicker?.cursor, st.directoryPicker?.travel, st.directoryPicker?.pulse,
-      st.git?.anim, st.git?.cursor, st.git?.pulse,
+      st.git?.anim, st.git?.gate, st.git?.pulse,
       st.plan?.anim, st.plan?.pulse, st.plan?.cursorAnim,
       st.questionnaire?.anim, st.questionnaire?.stepAnim, st.questionnaire?.cursorAnim,
       st.questionnaire?.shake, st.questionnaire?.pulse,
+      st.approde?.anim, st.approde?.cursor, st.approde?.pulse,
       st.scrollSpring,
     ];
     if (springs.some((spring) => spring && !spring.settled)) return true;
@@ -111,6 +118,9 @@ export const renderMethods = {
     st.settingsAnim.step(dt);
     st.settingsCursor.step(dt);
     st.settingsFlash.step(dt);
+    this.stepEffortPickerAnimations(dt);
+    st.status.anim.step(dt);
+    st.status.pulse.step(dt);
     st.jumpAnim.step(dt);
     st.sessionPicker.anim.step(dt);
     st.rewindAnim.step(dt);
@@ -123,6 +133,7 @@ export const renderMethods = {
     this.stepGitAnimations(dt);
     this.stepPlanAnimations(dt);
     this.stepQuestionnaireAnimations(dt);
+    this.stepApprodeAnimations(dt);
     for (const item of st.messageQueue) {
       item.anim?.step(dt);
       item.y?.step(dt);
@@ -241,12 +252,15 @@ export const renderMethods = {
       drawRailLabel(s, hover, RAIL_W, vp.y + row, st.railAmt.v, s.w - RAIL_W - 2);
     }
 
+    // Docked drawer: the transcript already yielded these columns via bodyWidth().
+    drawApprode(s, st, t, vp);
+
     const cy = s.h - STATUS_H - vp.composerH - 1;
     const qy = cy - vp.queuedH - (vp.queuedH ? 1 : 0);
     const planY = qy - vp.planH - (vp.planH ? 1 : 0);
     if (vp.planH) drawPlanPanel(s, st, 1, planY, s.w - 2, t, vp.planH);
     if (vp.queuedH) drawMessageQueue(s, st, 1, qy, s.w - 2, t);
-    // The composer owns the top interaction layer so its slash hint can overlap
+    // The composer owns the top interaction layer so its suggestion menu can overlap
     // the plan/queue stack without being painted over by those panels.
     drawComposer(s, st, 1, cy, s.w - 2, t);
     if (st.rewindAnim.v > 0.001) drawRewindConfirm(s, st, 1, planY - 4, s.w - 2, t);
@@ -255,12 +269,14 @@ export const renderMethods = {
     if (st.showFps) this.drawFps();
     if (st.paletteAnim.v > 0.001) drawPalette(s, st, t);
     if (st.settingsAnim.v > 0.001) drawSettings(s, st, t);
+    if (st.status.anim.v > 0.001) drawStatusDashboard(s, st, t);
     if (st.jumpAnim.v > 0.001) drawJumpList(s, st, t);
     if (st.sessionPicker.anim.v > 0.001) drawSessions(s, st, t);
     if (st.directoryPicker.anim.v > 0.001) drawDirectories(s, st, t);
     if (st.compact.enter.v > 0.001) drawCompact(s, st, t);
     if (st.git.anim.v > 0.001) drawGit(s, st, t);
     if (st.questionnaire.anim.v > 0.001) drawQuestionnaire(s, st, t);
+    if (st.effortPicker.anim.v > 0.001) drawEffortPicker(s, st, t);
   },
 
   drawScrollbar(vp) {
@@ -294,9 +310,14 @@ export const renderMethods = {
 function animatedToolNodes(message) {
   if (message.role === 'system' && message.subtype === 'changeset') return [message];
   if (message.role === 'tool') return [message];
-  if (message.role === 'toolgroup') return [message, ...(message.tools ?? [])];
+  if (message.role === 'toolgroup' || message.role === 'fileeditgroup') return [message, ...(message.tools ?? [])];
   if (message.role === 'workgroup') {
-    return [message, ...(message.tools ?? []), ...(message.tools ?? []).flatMap((group) => group.tools ?? [])];
+    return [
+      message,
+      ...(message.fileEdits ? [message.fileEdits, ...(message.fileEdits.tools ?? [])] : []),
+      ...(message.tools ?? []),
+      ...(message.tools ?? []).flatMap((group) => group.tools ?? []),
+    ];
   }
   return [];
 }

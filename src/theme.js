@@ -21,6 +21,8 @@ export const C = {
   moss: rgb('#4E7A5E'),
   teal: rgb('#2F6B78'),
   plum: rgb('#7A4A63'),
+  mentionMark: rgb('#526DA8'), // @file-reference marker
+  mentionPath: rgb('#66759A'), // @file-reference path
 };
 
 export const T = {
@@ -40,6 +42,8 @@ export const T = {
   accent2: C.teal,
   ok: C.moss,
   warn: C.ember,
+  mentionMark: C.mentionMark,
+  mentionPath: C.mentionPath,
 };
 
 // `bar` is the in-transcript gutter wipe; `rail` is the navigation tick on the
@@ -77,7 +81,8 @@ export function drawPaperGrain(s, x = 0, y = 0, w = s.w, h = s.h) {
   const fg = mix(T.bg, C.sand, 0.11);
   for (let row = 0; row < h; row++) {
     for (let col = 0; col < w; col++) {
-      if (grain(x + col, y + row)) s.put(x + col, y + row, '·', fg, T.bg);
+      // Keep the speck visible while its clipboard representation remains paper.
+      if (grain(x + col, y + row)) s.put(x + col, y + row, '·', fg, T.bg, 0, ' ');
     }
   }
 }

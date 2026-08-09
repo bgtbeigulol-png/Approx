@@ -1,6 +1,6 @@
 import { Spring } from './anim.js';
 import { setComposerInput } from './composer-state.js';
-import { HELP, ABOUT, SAMPLE_ANSWER, STATS_TEMPLATE } from './content.js';
+import { HELP, SAMPLE_ANSWER } from './content.js';
 
 /** User-turn submission, backend dispatch, and offline scripted actions. */
 export const turnMethods = {
@@ -12,7 +12,8 @@ export const turnMethods = {
     if (accepted === false) return;
     setComposerInput(this.st, '');
     this.st.slashMatches = [];
-    this.st.slashAnim.set(0);
+    this.closeFileMention?.();
+    this.syncComposerSuggestionAnimation?.();
     this.st.history.push(raw);
     this.st.histIdx = -1;
   },
@@ -149,26 +150,6 @@ export const turnMethods = {
     this.scrollToBottom();
   },
 
-  showAbout() {
-    this.beginStream(ABOUT, 260);
-  },
-
-  showStats() {
-    const st = this.st;
-    this.push({
-      role: 'system',
-      text: STATS_TEMPLATE({
-        turns: st.turns,
-        msgs: st.msgs,
-        frames: st.frames,
-        avgDirty: Math.round(st.dirtyAvg),
-        uptime: Math.round(st.age / 1000),
-        w: this.s.w,
-        h: this.s.h,
-      }),
-    });
-    this.scrollToBottom();
-  },
 };
 
 function pickAnswer(prompt, words) {

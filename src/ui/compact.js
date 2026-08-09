@@ -82,7 +82,7 @@ function drawStages(s, compact, x, y, w, t, bg, running) {
     const hot = i === active;
     const complete = !running || i < active;
     const mark = complete ? MARK.check : hot ? MARK.tri_r : MARK.sq_o;
-    const col = hot ? T.accent : complete ? T.ok : T.dim;
+    const col = hot || complete ? T.accent : T.dim;
     s.text(sx, y, `${mark} ${STAGES[i]}`, mix(bg, col, hot ? 0.95 : 0.68), bg,
       hot || complete ? ATTR_BOLD : ATTR_DIM, cellW);
     if (i < STAGES.length - 1) {
@@ -102,7 +102,7 @@ function drawProgress(s, compact, x, y, w, t, bg, running, failed, reduceMotion)
 
   if (!running) {
     const amount = failed ? 0 : clamp(compact.progress?.v ?? 1, 0, 1);
-    bar(s, trackX, y, trackW, amount, failed ? T.warn : T.ok, T.inset, bg);
+    bar(s, trackX, y, trackW, amount, failed ? T.warn : T.accent, T.inset, bg);
     return;
   }
 
