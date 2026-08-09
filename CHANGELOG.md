@@ -54,7 +54,8 @@ All notable changes to Approx are documented in this file.
   restored together.
 - Fixed failed session, conversation, and workspace transitions leaving a
   partially initialized backend instead of recovering the previous session.
-- Fixed file-reference instructions and dependency-tree traversal edge cases.
+- Fixed file-reference instructions, dependency-tree traversal, and completion
+  paths when the workspace is reached through a Windows junction or symlink.
 
 ## [0.1.0-beta.1] - 2026-08-07
 

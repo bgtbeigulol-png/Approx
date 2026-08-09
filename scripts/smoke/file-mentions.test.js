@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -11,6 +11,8 @@ import { Screen } from '../../src/screen.js';
 import { FakeOut, ok, recordError } from './shared.js';
 
 const root = mkdtempSync(join(tmpdir(), 'approx-mentions-'));
+const aliasHolder = mkdtempSync(join(tmpdir(), 'approx-mentions-alias-'));
+const linkedRoot = join(aliasHolder, 'workspace');
 let testError = null;
 
 try {
@@ -21,6 +23,7 @@ try {
   writeFileSync(join(root, 'src', 'app.js'), 'export {};\n', { encoding: 'utf8' });
   writeFileSync(join(root, 'alpha dir', 'note.txt'), 'note\n', { encoding: 'utf8' });
   writeFileSync(join(root, 'node_modules', 'fixture-package', 'dependency-only.js'), 'export {};\n', { encoding: 'utf8' });
+  symlinkSync(root, linkedRoot, process.platform === 'win32' ? 'junction' : 'dir');
 
   ok('file mentions require a token boundary', activeFileMention('mail@test.example') === null);
   ok('file mention highlighting preserves quoted, Markdown, and ordinary text', fileMentionSpans('read @src/app.js and `@README.md` and @"alpha dir/note.txt"')
@@ -43,7 +46,7 @@ try {
 
   const app = new App({ noSplash: true });
   app.s = new Screen(new FakeOut(82, 24));
-  app.st.cwdPath = root;
+  app.st.cwdPath = linkedRoot;
   setComposerInput(app.st, 'inspect @');
   await app.refreshFileMention();
   app.st.slashAnim.set(1, true);
@@ -82,7 +85,7 @@ try {
 
   app.st.fileMention.index = app.st.fileMention.matches.findIndex((item) => item.name === 'src/');
   await app.acceptFileMention();
-  ok('entering a folder keeps completion active', app.st.input === 'inspect @src/'
+  ok('entering a folder through a linked workspace keeps completion active', app.st.input === 'inspect @src/'
     && app.st.fileMention.matches.some((item) => item.name === 'app.js'));
   ok('folder contents retain parent navigation', app.st.fileMention.matches[0]?.name === '..');
 
@@ -115,3 +118,4 @@ try {
 recordError('file mentions', testError);
 ok('file mention workflow stays clean', !testError);
 rmSync(root, { recursive: true, force: true });
+rmSync(aliasHolder, { recursive: true, force: true });

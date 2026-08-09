@@ -126,6 +126,11 @@ function replaceMention(st, context, token, directory) {
 export async function fileMentionMatches(value, cursor, cwd) {
   const context = activeFileMention(value, cursor);
   if (!context) return { context: null, matches: [] };
+  // Keep every completion relative to the canonical workspace root. On
+  // Windows, temp/workspace paths commonly pass through a junction, so using
+  // the display cwd against canonical entry targets can produce an absolute
+  // path even though the entry is inside the workspace.
+  const base = await resolveDirectory('.', cwd);
   const slash = Math.max(context.raw.lastIndexOf('/'), context.raw.lastIndexOf('\\'));
   const folderText = slash >= 0 ? context.raw.slice(0, slash + 1) : '';
   const query = slash >= 0 ? context.raw.slice(slash + 1) : context.raw;
@@ -159,6 +164,9 @@ export async function fileMentionMatches(value, cursor, cwd) {
   scored.sort((a, b) => b.score - a.score
     || (a.kind === b.kind ? PATH_COLLATOR.compare(a.name, b.name) : a.kind === 'directory' ? -1 : 1));
   matches.push(...scored);
+  for (const item of matches) {
+    item.mentionPath = inputPath(base, item.target, item.kind !== 'file');
+  }
   return { context: { ...context, folder, query }, matches };
 }
 
@@ -237,7 +245,7 @@ export const fileMentionMethods = {
     if (!item || !context) return null;
     const directory = item.kind !== 'file';
     const cwd = this.st.cwdPath || this.backend?.cwd || process.cwd();
-    const path = inputPath(cwd, item.target, directory);
+    const path = item.mentionPath ?? inputPath(cwd, item.target, directory);
     replaceMention(this.st, context, mentionToken(path, context.quoted), directory);
     if (directory) {
       mention.dismissed = '';
