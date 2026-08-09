@@ -158,6 +158,27 @@ const {
   statusApp.openStatus(0);
   statusApp.statusKey({ name: 'escape' });
   ok('/status closes without mutating the transcript', !statusApp.st.status.open && statusApp.st.msgs.length === 0);
+
+  const emptyStatusApp = new App({ noSplash: true });
+  emptyStatusApp.s = new Screen(new FakeOut(72, 20));
+  let emptyStatusDirectionsSafe = true;
+  let emptyActivityFrame = '';
+  try {
+    for (let page = 0; page < 4; page++) {
+      for (const name of ['up', 'down', 'left', 'right']) {
+        emptyStatusApp.openStatus(page);
+        emptyStatusApp.st.status.anim.set(1, true);
+        emptyStatusApp.onKey({ name });
+        emptyStatusApp.render(0.8);
+        if (emptyStatusApp.st.status.page === 1) emptyActivityFrame = emptyStatusApp.s.ch.join('');
+      }
+    }
+  } catch {
+    emptyStatusDirectionsSafe = false;
+  }
+  ok('/status direction keys render every empty-history sheet without exiting', emptyStatusDirectionsSafe
+    && emptyActivityFrame.includes('nothing recorded yet'));
+  emptyStatusApp.clock.stop();
   statusApp.clock.stop();
   changesApp.clock.stop();
   quietApp.clock.stop();

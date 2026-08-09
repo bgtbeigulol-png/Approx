@@ -54,6 +54,8 @@ All notable changes to Approx are documented in this file.
   restored together.
 - Fixed failed session, conversation, and workspace transitions leaving a
   partially initialized backend instead of recovering the previous session.
+- Fixed `/status` direction-key navigation crashing on the Activity sheet when
+  no usage history has been recorded yet.
 - Fixed file-reference instructions, dependency-tree traversal, and completion
   paths when the workspace is reached through a Windows junction or symlink.
 

@@ -303,7 +303,8 @@ function drawActivity(s, st, x, y, w, h, ctx) {
   const count = clamp(Math.floor((w - 10) / pitch), 7, window);
   const shown = days.slice(-count);
   const values = shown.map(totalTokens);
-  const max = Math.max(1, ...values);
+  const peakValue = Math.max(0, ...values);
+  const scaleMax = Math.max(1, peakValue);
   const totals = usageTotals(st.usageHistory, { since: shown[0]?.day });
 
   sectionHead(s, x, y, w, 'TOKEN ACTIVITY', `${count} DAYS`, ctx.tint);
@@ -315,12 +316,12 @@ function drawActivity(s, st, x, y, w, h, ctx) {
   // exact values, so only the peak carries a number.
   const chartH = clamp(bottom - cy - 7, 3, 9);
   if (chartH >= 3) {
-    const peak = values.indexOf(max);
+    const peak = values.indexOf(peakValue);
     const scaleW = 5;
     const plotX = x + scaleW;
     for (let row = 0; row < chartH; row++) {
       const level = 1 - row / Math.max(1, chartH - 1);
-      s.textRight(x + scaleW - 2, cy + row, formatTokens(max * level), mix(T.bg, T.dim, 0.85),
+      s.textRight(x + scaleW - 2, cy + row, formatTokens(scaleMax * level), mix(T.bg, T.dim, 0.85),
         DEFAULT, ATTR_DIM);
       s.put(plotX - 1, cy + row, LIGHT.v, mix(T.bg, T.rule, 0.8));
     }
@@ -328,10 +329,10 @@ function drawActivity(s, st, x, y, w, h, ctx) {
       const cx = plotX + i * pitch;
       if (cx >= x + w) break;
       const grow = ease.outCubic(clamp(ctx.p * 1.5 - (i / Math.max(1, shown.length)) * 0.45, 0, 1));
-      const ratio = (values[i] / max) * grow;
-      const hot = i === peak && values[i] > 0;
+      const ratio = (values[i] / scaleMax) * grow;
+      const hot = i === peak && peakValue > 0;
       const color = values[i] <= 0 ? mix(T.bg, T.rule, 0.7)
-        : hot ? ctx.tint : mix(T.inset, ctx.tint, 0.3 + (values[i] / max) * 0.55);
+        : hot ? ctx.tint : mix(T.inset, ctx.tint, 0.3 + (values[i] / scaleMax) * 0.55);
       for (let dx = 0; dx < Math.max(1, pitch - 1); dx++) {
         if (values[i] <= 0) s.put(cx + dx, cy + chartH - 1, BLOCK.b1, color);
         else vbar(s, cx + dx, cy + chartH - 1, chartH, ratio, color);
@@ -350,7 +351,7 @@ function drawActivity(s, st, x, y, w, h, ctx) {
     s.put(plotX - 1, cy + chartH, HEAVY.bl, mix(T.rule, ctx.tint, 0.5));
     if (values[peak] > 0) {
       s.text(x, cy + chartH + 1,
-        ellipsize(`PEAK ${shown[peak].day} ${MARK.arrow} ${formatTokens(max)} TOK`, w),
+        ellipsize(`PEAK ${shown[peak].day} ${MARK.arrow} ${formatTokens(peakValue)} TOK`, w),
         ctx.tint, DEFAULT, ATTR_BOLD, w);
     }
     cy += chartH + 3;
@@ -363,7 +364,7 @@ function drawActivity(s, st, x, y, w, h, ctx) {
     const stripW = Math.max(0, Math.min(shown.length, x + w - stripX - 16));
     for (let i = 0; i < stripW; i++) {
       const value = values[values.length - stripW + i] ?? 0;
-      const intensity = clamp(value / max, 0, 1);
+      const intensity = clamp(value / scaleMax, 0, 1);
       s.put(stripX + i, cy, intensity <= 0 ? DASH.h : intensity > 0.66 ? BLOCK.full
         : intensity > 0.33 ? BLOCK.shade3 : BLOCK.shade2,
         intensity <= 0 ? mix(T.bg, T.rule, 0.75) : mix(T.inset, ctx.tint, 0.2 + intensity * 0.8));
@@ -389,9 +390,9 @@ function drawActivity(s, st, x, y, w, h, ctx) {
     leader(s, x, cy++, w, label, value, color);
   }
 
-  const busiest = shown[values.indexOf(max)];
+  const busiest = peakValue > 0 ? shown[values.indexOf(peakValue)] : null;
   colophon(s, x, Math.max(cy + 1, foot), w, ctx.tint, `SHEET 02 ${MARK.diamond} ACTIVITY`,
-    max > 0 ? `busiest ${busiest.day}` : 'nothing recorded yet');
+    busiest ? `busiest ${busiest.day}` : 'nothing recorded yet');
 }
 
 function drawModels(s, st, x, y, w, h, ctx) {
