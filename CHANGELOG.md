@@ -4,6 +4,11 @@ All notable changes to Approx are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Migrated npm releases to GitHub Actions trusted publishing with short-lived
+  OIDC credentials, automatic provenance, and stable `latest` tagging.
+
 ## [0.1.0] - 2026-08-09
 
 ### Added
