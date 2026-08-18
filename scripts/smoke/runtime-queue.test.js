@@ -171,6 +171,30 @@ const {
   c.st.input = '/effort h';
   c.refreshSlash();
   ok('effort slash filters choices', c.st.slashMatches.length === 1 && c.st.slashMatches[0].name === '/effort high');
+  c.st.input = '/effort-debug';
+  c.refreshSlash();
+  ok('effort debug is a directly-submittable slash command', c.cmds.some((cmd) => cmd.name === 'effort-debug')
+    && c.st.slashMatches.length === 1 && c.st.slashMatches[0].terminal);
+  const debugModel = c.st.model;
+  const debugEffort = c.st.effort;
+  const debugModels = backend.models.length;
+  const debugEfforts = backend.efforts.length;
+  const debugPromise = c.commandEffortDebug();
+  const debugPicker = c.st.effortPicker;
+  debugPicker.anim.set(1, true);
+  c.onKey({ name: 'right' }); debugPicker.fade.set(1, true); c.render(0.1);
+  const debugHigh = c.s.ch.join('');
+  c.onKey({ name: 'right' }); debugPicker.fade.set(1, true); c.render(0.2);
+  const debugXhigh = c.s.ch.join('');
+  c.onKey({ name: 'right' }); debugPicker.fade.set(1, true); c.render(0.3);
+  const debugMax = c.s.ch.join('');
+  c.onKey({ name: 'enter' });
+  const debugResult = await debugPromise;
+  ok('effort debug previews fixed high/xhigh/max scenes without backend or runtime side effects',
+    debugPicker.debug && debugPicker.previewOnly && debugPicker.options.join('|') === 'off|minimal|low|medium|high|xhigh|max'
+    && debugHigh.includes('high') && debugXhigh.includes('xhigh') && debugMax.includes('max')
+    && !debugResult.applied && c.st.model === debugModel && c.st.effort === debugEffort
+    && backend.models.length === debugModels && backend.efforts.length === debugEfforts);
   c.st.input = '/markdown ';
   c.refreshSlash();
   ok('markdown slash offers on and off', c.st.slashMatches.map((it) => it.name).join('|') === '/markdown on|/markdown off');

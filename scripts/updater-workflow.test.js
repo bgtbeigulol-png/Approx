@@ -2,6 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
@@ -17,6 +18,7 @@ import {
 } from '../src/updater.js';
 import { updaterMethods } from '../src/app-updater.js';
 import { transcriptMethods } from '../src/app-transcript.js';
+import { createUpdatePanel } from '../src/update-tui.js';
 
 const execFileAsync = promisify(execFile);
 const root = mkdtempSync(join(tmpdir(), 'approx-updater-'));
@@ -27,8 +29,23 @@ const ok = (condition, message) => {
   assertions++;
 };
 
+class PanelOut extends EventEmitter {
+  constructor() {
+    super();
+    this.columns = 84;
+    this.rows = 22;
+    this.isTTY = true;
+    this.buf = '';
+  }
+
+  write(chunk) {
+    this.buf += String(chunk ?? '');
+    return true;
+  }
+}
+
 try {
-  process.stdout.write('[1/8] create a temporary Git release channel\n');
+  process.stdout.write('[1/9] create a temporary Git release channel\n');
   const remote = join(root, 'remote.git');
   const publisher = join(root, 'publisher');
   const checkout = join(root, 'checkout');
@@ -49,7 +66,7 @@ try {
   await git(['commit', '-m', 'release 1.1.0'], publisher);
   await git(['push', 'origin', 'main'], publisher);
 
-  process.stdout.write('[2/8] check and apply the Git update workflow\n');
+  process.stdout.write('[2/9] check and apply the Git update workflow\n');
   const gitCheck = await checkForGitUpdate({ cwd: checkout });
   ok(gitCheck.available && gitCheck.channel === 'git', 'Git check should find the remote release');
   ok(gitCheck.commits === 1 && gitCheck.version === '1.1.0', 'Git check should report commit and version');
@@ -78,7 +95,7 @@ try {
   const secondGitCheck = await checkForGitUpdate({ cwd: checkout });
   ok(!secondGitCheck.available && secondGitCheck.commits === 0, 'second Git check should be up to date');
 
-  process.stdout.write('[3/8] emulate npm dist-tags and select the newest release\n');
+  process.stdout.write('[3/9] emulate npm dist-tags and select the newest release\n');
   const npmRoot = join(root, 'npm-install');
   mkdirSync(npmRoot, { recursive: true });
   writePackage(npmRoot, '1.0.0');
@@ -94,7 +111,7 @@ try {
   ok(npmCheck.version === '1.2.0-beta.1' && npmCheck.tag === 'beta',
     'npm check should select the newest version across published tags');
 
-  process.stdout.write('[4/8] apply the npm global update workflow\n');
+  process.stdout.write('[4/9] apply the npm global update workflow\n');
   const npmResult = await applyUpdate({ cwd: npmRoot, check: npmCheck, npmRunner });
   ok(npmResult.updated && npmResult.channel === 'npm', 'npm release should install successfully');
   const globalInstall = npmCalls.find((args) => args[0] === 'install');
@@ -102,18 +119,23 @@ try {
   ok(globalInstall?.includes('@bgtbeigulol-png/approx@1.2.0-beta.1'),
     'npm updater should pin the exact checked release');
 
-  process.stdout.write('[5/8] run the standalone approx update command workflow\n');
+  process.stdout.write('[5/9] run the standalone approx update command workflow\n');
   const output = [];
+  const progressEvents = [];
   const cliResult = await runUpdateCommand({
     cwd: npmRoot,
     npmRunner,
     write: (text) => output.push(text),
+    progress: (event) => progressEvents.push(event),
   });
   ok(cliResult.ok && cliResult.updated, 'standalone updater should complete the npm workflow');
   ok(output.join('').includes('via npm') && output.join('').includes('Restart Approx'),
     'standalone updater should report channel and restart requirement');
+  ok(progressEvents[0]?.status === 'run' && progressEvents.at(-1)?.done
+    && progressEvents.at(-1)?.status === 'ok',
+  'standalone updater should expose structured progress for the TTY panel');
 
-  process.stdout.write('[6/8] validate version ordering and failure reporting\n');
+  process.stdout.write('[6/9] validate version ordering and failure reporting\n');
   ok(compareVersions('1.2.0', '1.2.0-beta.2') > 0, 'stable release should outrank its prerelease');
   ok(compareVersions('1.2.0-beta.10', '1.2.0-beta.2') > 0, 'numeric prerelease identifiers should sort numerically');
   const failedCheck = await checkForNpmUpdate({
@@ -123,7 +145,7 @@ try {
   ok(failedCheck.reason === 'check-failed' && failedCheck.error.includes('registry fixture offline'),
     'registry failures should remain failures instead of reporting up to date');
 
-  process.stdout.write('[7/8] verify metadata commands without entering the TUI or updater\n');
+  process.stdout.write('[7/9] verify metadata commands without entering the TUI or updater\n');
   const cliPath = resolve('bin/approx.js');
   const packageVersion = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version;
   const versionResult = await execFileAsync(process.execPath, [cliPath, '--version'], { windowsHide: true });
@@ -133,7 +155,7 @@ try {
   ok(updateHelp.stdout.startsWith('usage: approx update') && !updateHelp.stdout.includes('checking for'),
     'update --help should describe the command without checking the network');
 
-  process.stdout.write('[8/8] verify in-app progress, completion, and error feedback\n');
+  process.stdout.write('[8/9] verify in-app progress, completion, and error feedback\n');
   const feedback = feedbackHost();
   feedback._checkForUpdate = async () => ({
     available: false, channel: 'npm', currentVersion: '1.2.0', version: '1.2.0',
@@ -177,6 +199,16 @@ try {
   ok(!feedback.st.update.updating && thrownInstall.reason === 'update-failed'
     && feedback.st.update.info.error === 'installer crashed' && feedback.st.toast.includes('update stopped'),
   'thrown in-app install errors should clear progress and persist a visible failure state');
+
+  process.stdout.write('[9/9] verify the standalone update panel lifecycle\n');
+  const panelOut = new PanelOut();
+  const panel = createUpdatePanel(panelOut, { holdMs: 0 });
+  panel.step({ id: 'check', label: 'Checking release channel', status: 'run' });
+  panel.step({ id: 'check', label: 'Approx 0.1.1 is ready', status: 'ok', done: true });
+  await panel.close();
+  ok(panel.closed && panelOut.buf.includes('APPROX UPDATE')
+    && panelOut.buf.includes('\u001b[?25l') && panelOut.buf.includes('\u001b[?25h'),
+  'TTY updater panel should render a result and restore the cursor');
 
   process.stdout.write(`updater workflow: ${assertions} assertions passed\n`);
 } finally {

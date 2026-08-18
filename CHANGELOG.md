@@ -4,8 +4,26 @@ All notable changes to Approx are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-18
+
+### Added
+
+- Added cinematic High, XHigh, and Max effort scenes: silver starlight, a black
+  meteor sky with warm embers, and a layered moving ocean with reflected light.
+- Added `/effort-debug` to preview the fixed seven-level effort spectrum without
+  changing the active model, effort setting, or backend state.
+- Added a compact live TTY panel for `approx update`, with structured progress
+  and reliable cursor restoration on completion or interruption.
+- Added a package-backed version source shared by the CLI, splash, and harness.
+
 ### Changed
 
+- Effort previews now crossfade from the currently visible frame across adjacent
+  or distant levels, including rapid repeated moves and panel-size changes.
+- The effort track now communicates faster-to-deeper reasoning as one physical
+  left-to-right color spectrum; Max uses animated multi-tone wave boundaries.
+- Reduced-motion mode keeps complete static effort scenes and switches levels
+  immediately without retaining animation snapshots.
 - Migrated npm releases to GitHub Actions trusted publishing with short-lived
   OIDC credentials, automatic provenance, and stable `latest` tagging.
 
@@ -76,4 +94,5 @@ Initial public beta.
 
 [0.1.0-beta.1]: https://github.com/bgtbeigulol-png/Approx/releases/tag/v0.1.0-beta.1
 [0.1.0]: https://github.com/bgtbeigulol-png/Approx/releases/tag/v0.1.0
-[Unreleased]: https://github.com/bgtbeigulol-png/Approx/compare/v0.1.0...HEAD
+[0.1.1]: https://github.com/bgtbeigulol-png/Approx/releases/tag/v0.1.1
+[Unreleased]: https://github.com/bgtbeigulol-png/Approx/compare/v0.1.1...HEAD

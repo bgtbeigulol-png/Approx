@@ -248,6 +248,10 @@ export const runtimeSettingMethods = {
     this.setEffort(effort);
   },
 
+  commandEffortDebug() {
+    return this.openEffortPicker({ debug: true, previewOnly: true });
+  },
+
   commandMarkdown(arg) {
     const value = String(arg ?? '').toLowerCase();
     if (!value) return this.setMarkdown(!this.st.markdown);

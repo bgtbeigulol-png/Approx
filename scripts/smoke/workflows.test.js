@@ -337,6 +337,59 @@ const {
   effortApp.onKey({ name: 'escape' });
   await narrowEffort;
 
+  const scenicApp = new App({ noSplash: true });
+  scenicApp.s = new Screen(new FakeOut(84, 22));
+  scenicApp.st.effortOptions = ['low', 'high', 'xhigh', 'max'];
+  scenicApp.st.effort = 'high';
+  const scenicPromise = scenicApp.openEffortPicker();
+  const scenic = scenicApp.st.effortPicker;
+  scenic.anim.set(1, true);
+  scenicApp.render(0);
+  const fingerprint = () => [scenicApp.s.ch.join('\u0001'), scenicApp.s.copyCh.join('\u0001'),
+    Array.from(scenicApp.s.fg).join(','), Array.from(scenicApp.s.bg).join(','), Array.from(scenicApp.s.at).join(',')].join('|');
+  const highFrame = fingerprint();
+  const highRow = scenicApp.s.ch.slice((scenic.geometry.y + 4) * scenicApp.s.w, (scenic.geometry.y + 5) * scenicApp.s.w);
+  const highX = highRow.indexOf('h');
+  ok('high is a bold silver label on a black starlit chip', highX >= 0
+    && scenicApp.s.bg[(scenic.geometry.y + 4) * scenicApp.s.w + highX] === T.pitch
+    && (scenicApp.s.at[(scenic.geometry.y + 4) * scenicApp.s.w + highX] & 1) === 1);
+  scenicApp.moveEffortPicker(1);
+  scenicApp.render(0.1);
+  const firstXhigh = fingerprint();
+  scenic.fade.set(0.25, true);
+  scenicApp.render(0.2);
+  const middleXhigh = fingerprint();
+  scenic.fade.set(1, true);
+  scenicApp.render(0.3);
+  const finalXhigh = fingerprint();
+  const xhighInterior = (scenic.geometry.y + 1) * scenicApp.s.w + scenic.geometry.x + 1;
+  ok('high to xhigh crossfade starts on the old frame, changes midway, then reaches the black meteor sky',
+    firstXhigh === highFrame && middleXhigh !== highFrame && finalXhigh !== highFrame
+    && scenicApp.s.bg[xhighInterior] === T.pitch && scenicApp.s.ch.join('').includes('╌') && scenicApp.s.ch.join('').includes('✧'));
+  scenicApp.moveEffortPicker(1);
+  scenic.fade.set(0.3, true);
+  scenicApp.render(0.4);
+  const visibleMiddle = fingerprint();
+  scenicApp.moveEffortPicker(0, 'start');
+  scenicApp.render(0.5);
+  ok('a Home move during xhigh to max begins from the visible intermediate frame', fingerprint() === visibleMiddle && scenic.index === 0);
+  scenic.fade.set(1, true);
+  scenicApp.moveEffortPicker(0, 'end');
+  scenic.fade.set(1, true);
+  scenicApp.render(0.7);
+  ok('max expands to a meteor sky and animated multi-tone ocean', scenic.geometry.h > 9
+    && scenicApp.s.ch.join('').includes('Cinematic maximum reasoning')
+    && scenicApp.s.ch.join('').includes('≈') && scenicApp.s.ch.join('').includes('╲'));
+  scenicApp.st.reduceMotion = true;
+  const beforeReduced = fingerprint();
+  scenicApp.moveEffortPicker(0, 'start');
+  scenicApp.render(1);
+  ok('reduced motion switches immediately and discards transition snapshots', scenic.snapshot === null && scenic.fade.settled
+    && fingerprint() !== beforeReduced && scenic.index === 0);
+  scenicApp.closeEffortPicker(false, 'test');
+  await scenicPromise;
+  scenicApp.clock.stop();
+
   effortApp.s = new Screen(new FakeOut(84, 22));
   effortApp.openSettings();
   const effortSettingIndex = settingsRows(settingsModel(effortApp)).findIndex((item) => item.key === 'effort');

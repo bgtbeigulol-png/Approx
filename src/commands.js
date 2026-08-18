@@ -12,6 +12,10 @@ export function buildCommands(app) {
       name: 'effort', desc: 'Switch reasoning effort', key: '', choices: true, submitBare: true,
       run: (arg) => app.commandEffort(arg),
     },
+    {
+      name: 'effort-debug', desc: 'Preview every effort scene without applying', key: '', submitBare: true,
+      run: () => app.commandEffortDebug(),
+    },
     { name: 'markdown', desc: 'Render Markdown on/off', key: '', choices: true, run: (arg) => app.commandMarkdown(arg) },
     {
       name: 'approde', desc: 'Hot-swap skills and prompts', key: '^b', palette: true, submitBare: true,

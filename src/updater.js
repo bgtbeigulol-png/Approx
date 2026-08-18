@@ -206,30 +206,44 @@ export async function applyNpmUpdate({
 export async function runUpdateCommand({
   cwd = UPDATE_ROOT,
   write = (text) => process.stdout.write(text),
+  progress = null,
   gitRunner = runGit,
   npmRunner = runNpm,
 } = {}) {
+  progress?.({ id: 'check', label: 'Checking release channel', status: 'run' });
   write('Approx update: checking for the latest version...\n');
   const check = await checkForUpdate({ cwd, gitRunner, npmRunner });
   if (check.reason) {
+    progress?.({ id: 'check', label: `Check failed: ${formatUpdateFailure(check)}`, status: 'warn', done: true });
     write(`Approx update: check failed (${formatUpdateFailure(check)}).\n`);
     return { ok: false, check };
   }
   if (!check.available) {
+    progress?.({
+      id: 'check',
+      label: `Up to date · ${check.currentVersion || check.version || 'current'} · ${check.channel}`,
+      status: 'ok',
+      done: true,
+    });
     write(`Approx is up to date (${check.currentVersion || check.version || 'current'} via ${check.channel}).\n`);
     return { ok: true, check, updated: false };
   }
   const label = check.version || check.remote?.slice(0, 7) || 'new version';
+  progress?.({ id: 'check', label: `${label} available · ${check.channel}`, status: 'ok' });
+  progress?.({ id: 'install', label: `Installing ${label}`, status: 'run' });
   write(`Approx update: ${label} available via ${check.channel}; installing...\n`);
   const result = await applyUpdate({ cwd, check, gitRunner, npmRunner });
   if (!result.updated) {
+    progress?.({ id: 'install', label: `Stopped: ${formatUpdateFailure(result)}`, status: 'warn', done: true });
     write(`Approx update: stopped (${formatUpdateFailure(result)}).\n`);
     return { ok: false, check, result };
   }
   if (result.dependencyWarning) {
+    progress?.({ id: 'install', label: 'Updated; dependency sync needs attention', status: 'warn', done: true });
     write(`Approx source updated, but dependency sync needs attention: ${result.dependencyWarning}\n`);
     return { ok: false, check, result };
   }
+  progress?.({ id: 'install', label: `${result.version || label} installed · restart Approx`, status: 'ok', done: true });
   write(`Approx ${result.version || label} installed. Restart Approx to load it.\n`);
   return { ok: true, check, result, updated: true };
 }

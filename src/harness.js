@@ -26,7 +26,7 @@
 //     {"cmd":"quit"}
 //
 //   app → driver   (events, field `event`)
-//     {"event":"ready","version":"0.1.0","caps":[...]}
+//     {"event":"ready","version":"<package version>","caps":[...]}
 //     {"event":"submit","text":"..."}         a user turn landed (typed or injected)
 //     {"event":"needReply","text":"..."}      driver is attached; produce a reply
 //     {"event":"streamEnd"}                   an assistant stream finished
@@ -40,6 +40,7 @@
 // same renderer, so a driver gets the real animation, not a stubbed one.
 
 import { readFileSync } from 'node:fs';
+import { APPROX_VERSION } from './version.js';
 
 const CAPS = ['submit', 'say', 'system', 'tool', 'set', 'attach', 'frame', 'snapshot', 'interrupt', 'clear'];
 
@@ -63,7 +64,7 @@ export class Harness {
     this.in.on('data', this._onData);
     this.in.on('end', () => this.emit({ event: 'bye' }));
     this.in.resume();
-    this.emit({ event: 'ready', version: '0.1.0', caps: CAPS });
+    this.emit({ event: 'ready', version: APPROX_VERSION, caps: CAPS });
     return this;
   }
 
@@ -108,7 +109,7 @@ export class Harness {
     const app = this.app;
     switch (msg.cmd) {
       case 'hello':
-        return this.emit({ event: 'ready', version: '0.1.0', caps: CAPS, attached: this.attached });
+        return this.emit({ event: 'ready', version: APPROX_VERSION, caps: CAPS, attached: this.attached });
       case 'ping':
         return this.emit({ event: 'pong' });
       case 'attach':

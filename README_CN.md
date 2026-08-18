@@ -10,7 +10,7 @@ Approx 是一个运行在终端里的编程智能体工作区，由
   <img src="assets/approx-banner.jpg" alt="Approx CLI 项目横幅" width="800">
 </p>
 
-Approx v0.1.0 当前正式验证环境为 Windows Terminal 与 PowerShell 7。
+Approx v0.1.1 当前正式验证环境为 Windows Terminal 与 PowerShell 7。
 
 ## 安装
 
@@ -78,7 +78,8 @@ approx --help
 在任意终端运行 `approx update` 即可检查并安装最新版本。Git checkout 会跟随
 当前配置的 upstream，要求工作区干净，并在 fast-forward 拉取后同步 npm 依赖；
 npm 安装版会查询 registry，并全局安装精确的最新发布版本。Settings 中可以控制
-更新提示和自动更新；应用内也可以使用 `/update`、`/update install` 和
+更新提示和自动更新；在交互式终端中，独立更新器会用一张紧凑的实时卡片展示进度，
+完成后恢复 Shell 光标。应用内也可以使用 `/update`、`/update install` 和
 `/update hide` 完成同一流程。
 
 `approx update --help` 只显示独立更新器说明，不会连接 Git 或 npm 更新通道。
@@ -100,6 +101,12 @@ Go Mode 会立即开始工作。Plan Mode 会先问几个关键问题并展示�
 `/status` 提供四页状态表，分别展示上下文占用、近期 Token 活动、模型与 Effort
 分布以及成本汇总；用量历史会在本地保留最多 90 天。`/effort` 会打开当前模型支持的
 推理等级选择器；一轮工作期间选择的新等级从下一轮开始生效。
+
+Effort 光谱按终端中的物理位置从左侧的快速/浅层推理延伸到右侧的深度推理。High
+使用银灰星光文字，XHigh 会把整个面板变成带流星和火星的夜空，Max 则在星空下加入
+带反光与多层波浪边界的动态海洋。任意档位之间都会从当前可见画面渐入渐出，快速
+跨多档也不会硬切；开启“减少动态效果”后会保留静态场景。`/effort-debug` 可以预览
+全部七档，但不会修改当前模型、Effort 或 backend 状态。
 
 ## Git 工作台
 

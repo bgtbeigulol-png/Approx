@@ -10,7 +10,7 @@ plan work, review file changes, and handle the Git work around a project.
   <img src="assets/approx-banner.jpg" alt="Approx CLI banner" width="800">
 </p>
 
-Approx v0.1.0 is currently verified on Windows Terminal with PowerShell 7.
+Approx v0.1.1 is currently verified on Windows Terminal with PowerShell 7.
 
 ## Install
 
@@ -80,7 +80,9 @@ Run `approx update` from any terminal to check and install the newest release.
 A Git checkout follows its configured upstream, requires a clean worktree, and
 synchronizes npm dependencies after a fast-forward pull. An npm installation
 checks the package registry and installs the exact newest published version
-globally. The Settings page controls update notices and automatic updates;
+globally. On an interactive terminal, the standalone updater shows its progress
+in a compact live card and restores the shell cursor when it finishes. The
+Settings page controls update notices and automatic updates;
 `/update`, `/update install`, and `/update hide` expose the same workflow in-app.
 
 `approx update --help` describes the standalone updater without contacting its
@@ -106,6 +108,14 @@ changes before they are applied.
 model and effort mix, and cost totals. Usage history is stored locally for up to
 90 days. `/effort` opens a dedicated picker for the current model's supported
 reasoning levels; changes made during a turn are applied to the next turn.
+
+The effort spectrum runs physically from faster/shallower on the left to
+deeper reasoning on the right. High adds a silver starlit treatment, XHigh
+turns the panel into a meteor-lit night sky, and Max extends it into a moving,
+layered ocean with reflected light. Switching between any levels crossfades
+from the frame currently on screen, including rapid multi-level jumps. Reduced
+motion keeps the scenes static. `/effort-debug` previews all seven scenes
+without changing the active model, effort, or backend state.
 
 ## Git Workbench
 

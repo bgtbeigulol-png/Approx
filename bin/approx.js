@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Approx — brutalist condensed-milk TUI.
 
-import { readPackageMetadata, runUpdateCommand } from '../src/updater.js';
+import { runUpdateCommand } from '../src/updater.js';
+import { createUpdatePanel } from '../src/update-tui.js';
+import { APPROX_VERSION } from '../src/version.js';
 
 const argv = process.argv.slice(2);
 const has = (...names) => names.some((name) => argv.includes(name));
@@ -9,11 +11,20 @@ const has = (...names) => names.some((name) => argv.includes(name));
 const command = argv[0]?.toLowerCase();
 
 if (has('-v', '--version')) {
-  process.stdout.write(`${readPackageMetadata().version}\n`);
+  process.stdout.write(`${APPROX_VERSION}\n`);
 } else if (command === 'update' && has('-h', '--help')) {
   process.stdout.write(`usage: approx update\n\nCheck the active Git or npm channel and install its newest release.\n`);
 } else if (command === 'update') {
-  const outcome = await runUpdateCommand();
+  const panel = createUpdatePanel();
+  let outcome;
+  try {
+    outcome = await runUpdateCommand({
+      write: panel ? () => {} : undefined,
+      progress: panel ? (event) => panel.step(event) : undefined,
+    });
+  } finally {
+    await panel?.close();
+  }
   process.exitCode = outcome.ok ? 0 : 1;
 } else {
   await runApp();
