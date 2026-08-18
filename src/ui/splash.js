@@ -6,6 +6,7 @@ import { T, mix, drawPaperGrain } from '../theme.js';
 import { ease, clamp, norm, smooth } from '../anim.js';
 import { rule, textReveal, crops } from '../draw.js';
 import { padTo } from '../wrap.js';
+import { APPROX_VERSION } from '../version.js';
 
 const WORD = bigWord('APPROX', 1);
 const LOGO_W = WORD[0].length;
@@ -81,7 +82,8 @@ export function drawSplash(s, ms) {
   // 4. version chip, snaps in last
   const chipP = ease.outBack(norm(ms, 1240, 1620));
   if (chipP > 0.02) {
-    const label = padTo('v0.1.0', Math.max(1, Math.round(6 * clamp(chipP, 0, 1))), 'left').trimEnd();
+    const version = `v${APPROX_VERSION}`;
+    const label = padTo(version, Math.max(1, Math.round(version.length * clamp(chipP, 0, 1))), 'left').trimEnd();
     if (label) {
       const bx = Math.floor((w - 8) / 2);
       const by = cy + 9 - lift;

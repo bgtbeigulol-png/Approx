@@ -1,7 +1,7 @@
 # Approx Quick Know
 
 > 给后来接手的人和 Agent 的项目地图。先读这一份，再按任务定位文件；通常不需要先通读 `src/`。
-> 最后复核：2026-08-09（v0.1.0）。
+> 最后复核：2026-08-18（v0.1.1）。
 
 ## 一句话理解
 
@@ -44,10 +44,14 @@ Approx 是 Windows Terminal 上的 Node.js ESM TUI。它自己负责终端、交
 - `--continue`：继续当前目录最近的 Pi 会话。
 - `--no-splash`：跳过启动动画。
 - `--help` / `--version`：输出元信息，不要求 TTY。
-- `approx update`：不启动 TUI，直接进入更新流程。
+- `approx update`：不启动主 TUI；TTY 中使用 `src/update-tui.js` 的实时进度卡片，
+  非 TTY 保留纯文本输出。
 - `approx update --help`：只输出更新器说明，不连接远端。
 
 `--harness`、`--scripted`、`--live` 是互斥 backend 模式。正常 TUI 要求 stdout 是 TTY；update 和 harness 例外。
+
+CLI、启动画面和 harness 的版本号统一来自 `src/version.js`，它读取当前包的
+`package.json`。发布时不要再在界面文件里手改版本字符串。
 
 ## App 是怎样拼起来的
 
@@ -65,7 +69,7 @@ Approx 是 Windows Terminal 上的 Node.js ESM TUI。它自己负责终端、交
 | `navigation.js` | palette、settings、jump overlay |
 | `runtime-settings.js` | model、effort、Markdown、compact、偏好持久化 |
 | `file-mentions.js` | `@path` 解析、异步补全和选择状态 |
-| `effort-picker.js` | 独立 Effort overlay 与延迟应用 |
+| `effort-picker.js` | Effort overlay、debug 预览、跨档快照与延迟应用 |
 | `app-status.js`、`app-updater.js` | 状态页控制与应用内更新流程 |
 | `plan.js`、`questionnaire.js`、`approde.js`、`git.js` 等 | 各领域状态和交互 |
 | `src/ui/*.js` | 尽量只做 geometry 和 draw，不拥有业务状态 |
@@ -187,13 +191,26 @@ Transcript 不是扁平消息数组。常见节点：
 - Git checkout：fetch 后比较 commit；工作树必须干净；只允许 `pull --ff-only`；随后 `npm ci`/`npm install`。
 - npm 安装：读取 dist-tags，选版本最高的 release，按精确版本全局安装。
 
-CLI、Settings 和 `/update` 最终共用这一层。
+CLI、Settings 和 `/update` 最终共用这一层。`runUpdateCommand()` 同时输出纯文本和结构化
+progress event；`src/update-tui.js` 只消费 event 并绘制卡片，不参与版本选择或安装判断。
 
 ### 状态与用量
 
 - `src/usage-history.js` 归一化并保存最多 90 天的 input/output/cache/cost，以及 model/effort 分布。
 - `src/app-status.js` 管理四个 sheet；`src/ui/status-dashboard.js` 负责 context、activity、models、costs 的完整绘制。
 - usage backend event 同时更新本轮统计和持久历史；状态页里的更新检查复用 `app-updater.js`。
+
+### Effort 场景
+
+- `/effort` 只展示当前模型支持的档位；`/effort-debug` 固定展示
+  `off/minimal/low/medium/high/xhigh/max`，关闭时不调用 backend。
+- 状态和输入在 `src/effort-picker.js`，场景绘制在 `src/ui/effort-picker.js`，动画推进与
+  持续帧判断在 `src/app-render.js`。
+- High 是银灰星光标签；XHigh 是整面板黑色星空、浅角长尾流星和暖色火星；Max 在其上
+  增加多层色调、波浪分界、反光和纹理持续移动的海洋。
+- 切换前会复制当前已合成的 Screen cell；旧 glyph 淡出后新 glyph 淡入，背景连续混色。
+  连续移动必须从当前中间帧续接。resize、关闭、supersede 和动画完成后都要释放快照。
+- `reduceMotion` 直接切换并绘制完整静态帧；窄终端仍要保证 hit target 和 footer 在面板内。
 
 ## 测试地图
 
@@ -238,7 +255,7 @@ npm test
 
 ## 发布 v0.x
 
-发布提交必须让 `package.json` 与 `package-lock.json` 版本一致，并从同一个 commit 生成 Git tag、GitHub Release 和 npm 包。推荐顺序：
+发布提交必须让 `package.json` 与 `package-lock.json` 版本一致，并从同一个 commit 生成 Git tag、GitHub Release 和 npm 包。正式版发布顺序：
 
 ```powershell
 $ErrorActionPreference = 'Stop'
@@ -248,10 +265,12 @@ git tag -a vVERSION -m "Approx vVERSION"
 git push origin main
 git push origin vVERSION
 gh release create vVERSION --verify-tag --title "Approx vVERSION" --notes-file RELEASE_NOTES
-npm publish --access public
 ```
 
-发布后用 `gh release view vVERSION` 和 `npm view @bgtbeigulol-png/approx version dist-tags --json` 核对两个通道。正式版应让 npm `latest` 指向该版本；预发布版显式使用 `--tag beta`。
+发布 GitHub Release 会触发 `.github/workflows/publish.yml`，以 trusted publishing + OIDC
+运行测试并发布 npm `latest`。发布后用 `gh release view vVERSION`、`gh run list` 和
+`npm view @bgtbeigulol-png/approx version dist-tags --json` 核对三个状态；不要再从本机重复
+执行 `npm publish`。预发布需先调整 workflow 的 dist-tag 策略，不能沿用正式版 `latest`。
 
 ## Review 结论与风险
 

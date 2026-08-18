@@ -52,11 +52,14 @@ export const renderMethods = {
     const st = this.st;
     if (this.frameRequested || st.phase === 'splash') return true;
     if (st.wipe > 0 || st.showFps) return true;
+    // The spectrum scan and the cosmic scenes share the render clock. Reduced
+    // motion retains the completed scene but leaves it entirely static.
+    if (st.effortPicker?.open && !st.reduceMotion) return true;
 
     const springs = [
       st.ctxUse, st.focusAnim, st.paletteAnim, st.slashAnim, st.railBulge, st.railAmt,
        st.settingsAnim, st.settingsCursor, st.settingsFlash, st.jumpAnim,
-       st.effortPicker?.anim, st.effortPicker?.cursor, st.effortPicker?.pulse,
+       st.effortPicker?.anim, st.effortPicker?.cursor, st.effortPicker?.pulse, st.effortPicker?.fade,
        st.status?.anim, st.status?.pulse,
       st.sessionPicker?.anim, st.rewindAnim, st.queueAnim, st.queuePulse,
       st.compact?.enter, st.compact?.progress, st.compact?.pulse,
