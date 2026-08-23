@@ -1,4 +1,4 @@
-# <img src="assets/approx-icon.png" alt="" width="36" height="36"> Approx
+# Approx
 
 [简体中文](README_CN.md) | English
 
@@ -7,7 +7,7 @@ Approx is a focused coding-agent workspace for the terminal, powered by
 plan work, review file changes, and handle the Git work around a project.
 
 <p align="center">
-  <img src="assets/approx-banner.jpg" alt="Approx CLI banner" width="800">
+  <img src="assets/approx-banner.png" alt="Approx CLI banner" width="800">
 </p>
 
 Approx v0.1.1 is currently verified on Windows Terminal with PowerShell 7.

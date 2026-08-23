@@ -1,4 +1,4 @@
-# <img src="assets/approx-icon.png" alt="" width="36" height="36"> Approx
+# Approx
 
 简体中文 | [English](README.md)
 
@@ -7,7 +7,7 @@ Approx 是一个运行在终端里的编程智能体工作区，由
 查看文件变更，并处理项目的 Git 操作。
 
 <p align="center">
-  <img src="assets/approx-banner.jpg" alt="Approx CLI 项目横幅" width="800">
+  <img src="assets/approx-banner.png" alt="Approx CLI 项目横幅" width="800">
 </p>
 
 Approx v0.1.1 当前正式验证环境为 Windows Terminal 与 PowerShell 7。
